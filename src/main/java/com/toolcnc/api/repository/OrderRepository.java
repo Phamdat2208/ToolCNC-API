@@ -13,4 +13,5 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Page<Order> findByUserId(Long userId, Pageable pageable);
     Optional<Order> findByOrderTrackingNumber(String trackingNumber);
     java.util.List<Order> findByUserIdOrderByDateCreatedDesc(Long userId);
+    java.util.List<Order> findAllByOrderByDateCreatedDesc();
 }

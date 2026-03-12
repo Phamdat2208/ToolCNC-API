@@ -135,4 +135,81 @@ public class OrderController {
 
         return ResponseEntity.ok(result);
     }
+
+    @GetMapping("/all")
+    public ResponseEntity<?> getAllOrders() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getName())) {
+            return ResponseEntity.status(401).body(Map.of("message", "Unauthorized"));
+        }
+
+        Optional<User> userOpt = userRepository.findByUsername(auth.getName());
+        if (userOpt.isEmpty() || !userOpt.get().getRole().name().equals("ADMIN")) {
+            return ResponseEntity.status(403).body(Map.of("message", "Forbidden"));
+        }
+
+        List<Order> orders = orderRepository.findAllByOrderByDateCreatedDesc();
+
+        List<Map<String, Object>> result = orders.stream().map(order -> {
+            List<OrderItem> orderItemsList = order.getOrderItems() != null ? order.getOrderItems() : List.of();
+            
+            List<Map<String, Object>> items = orderItemsList.stream().map(item -> {
+                Product product = item.getProductId() != null ? productRepository.findById(item.getProductId()).orElse(null) : null;
+                String productName = product != null && product.getName() != null ? product.getName() : "Sản phẩm không xác định";
+                String imageUrl = product != null && product.getImageUrl() != null ? product.getImageUrl() : "";
+
+                Map<String, Object> itemMap = new java.util.HashMap<>();
+                itemMap.put("productId", item.getProductId());
+                itemMap.put("productName", productName);
+                itemMap.put("imageUrl", imageUrl);
+                itemMap.put("quantity", item.getQuantity());
+                itemMap.put("unitPrice", item.getUnitPrice());
+                return itemMap;
+            }).collect(Collectors.toList());
+
+            Map<String, Object> orderMap = new java.util.HashMap<>();
+            orderMap.put("id", order.getId());
+            orderMap.put("trackingNumber", order.getOrderTrackingNumber());
+            orderMap.put("customerName", order.getFullName());
+            orderMap.put("phone", order.getPhone());
+            orderMap.put("address", order.getAddress());
+            orderMap.put("city", order.getCity());
+            orderMap.put("paymentMethod", order.getPaymentMethod());
+            orderMap.put("totalPrice", order.getTotalPrice());
+            orderMap.put("totalQuantity", order.getTotalQuantity());
+            orderMap.put("status", order.getStatus());
+            orderMap.put("dateCreated", order.getDateCreated());
+            orderMap.put("items", items);
+            return orderMap;
+        }).collect(Collectors.toList());
+
+        return ResponseEntity.ok(result);
+    }
+
+    @PutMapping("/{id}/status")
+    public ResponseEntity<?> updateOrderStatus(@PathVariable Long id, @RequestBody Map<String, String> payload) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            return ResponseEntity.status(401).body(Map.of("message", "Unauthorized"));
+        }
+
+        Optional<User> userOpt = userRepository.findByUsername(auth.getName());
+        if (userOpt.isEmpty() || !userOpt.get().getRole().name().equals("ADMIN")) {
+            return ResponseEntity.status(403).body(Map.of("message", "Forbidden"));
+        }
+        
+        Optional<Order> orderOpt = orderRepository.findById(id);
+        if (orderOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        
+        Order order = orderOpt.get();
+        if(payload.containsKey("status")) {
+            order.setStatus(payload.get("status"));
+            order.setLastUpdated(LocalDateTime.now());
+            orderRepository.save(order);
+            return ResponseEntity.ok(Map.of("message", "Order status updated successfully", "newStatus", order.getStatus()));
+        }
+        return ResponseEntity.badRequest().body(Map.of("message", "Status is required"));
+    }
 }
