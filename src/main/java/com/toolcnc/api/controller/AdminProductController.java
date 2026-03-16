@@ -28,12 +28,24 @@ public class AdminProductController {
 
     @PostMapping
     public ResponseEntity<?> createProduct(@RequestBody ProductRequest request) {
+        if (productRepository.existsByNameIgnoreCase(request.getName())) {
+            return ResponseEntity.badRequest().body("Tên sản phẩm '" + request.getName() + "' đã tồn tại!");
+        }
         Product product = mapToProduct(request);
         return ResponseEntity.ok(productRepository.save(product));
     }
 
     @PostMapping("/bulk")
     public ResponseEntity<?> createProducts(@RequestBody List<ProductRequest> requests) {
+        List<String> duplicateNames = requests.stream()
+                .map(ProductRequest::getName)
+                .filter(name -> productRepository.existsByNameIgnoreCase(name))
+                .collect(Collectors.toList());
+
+        if (!duplicateNames.isEmpty()) {
+            return ResponseEntity.badRequest().body("Các sản phẩm sau đã tồn tại tên: " + String.join(", ", duplicateNames));
+        }
+
         List<Product> products = requests.stream().map(this::mapToProduct).collect(Collectors.toList());
         return ResponseEntity.ok(productRepository.saveAll(products));
     }
@@ -46,6 +58,12 @@ public class AdminProductController {
         }
 
         Product existingProduct = optionalProduct.get();
+        
+        // Kiểm tra trùng tên khi đổi tên (không phân biệt hoa thường, trừ chính nó)
+        if (productRepository.existsByNameIgnoreCaseAndIdNot(req.getName(), id)) {
+            return ResponseEntity.badRequest().body("Tên sản phẩm '" + req.getName() + "' đã tồn tại!");
+        }
+
         existingProduct.setName(req.getName());
         if (req.getSku() != null && !req.getSku().isEmpty()) {
             existingProduct.setSku(req.getSku());
@@ -67,16 +85,12 @@ public class AdminProductController {
     }
 
     private Product mapToProduct(ProductRequest req) {
-        // Fallback or find category
-        Long catId = req.getCategoryId() != null ? req.getCategoryId() : 1L;
-        Category category = categoryRepository.findById(catId).orElseGet(() -> {
-            // Find first or create default
-            Optional<Category> first = categoryRepository.findAll().stream().findFirst();
-            if(first.isPresent()) return first.get();
-            
-            Category newCat = Category.builder().name("General Tools").description("Default category").build();
-            return categoryRepository.save(newCat);
-        });
+        if (req.getCategoryId() == null) {
+            throw new RuntimeException("Category ID is required for a new product");
+        }
+        
+        Category category = categoryRepository.findById(req.getCategoryId())
+                .orElseThrow(() -> new RuntimeException("Category not found with id: " + req.getCategoryId()));
 
         String sku = req.getSku();
         if (sku == null || sku.isEmpty()) {

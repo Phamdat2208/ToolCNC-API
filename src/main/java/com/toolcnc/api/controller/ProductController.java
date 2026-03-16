@@ -27,7 +27,7 @@ public class ProductController {
             @RequestParam(required = false) String category,
             @RequestParam(required = false) BigDecimal minPrice,
             @RequestParam(required = false) BigDecimal maxPrice,
-            @RequestParam(required = false) String brand,
+            @RequestParam(required = false) java.util.List<String> brand,
             @RequestParam(required = false) String sort) {
 
         Sort sortObj = Sort.unsorted();
@@ -39,8 +39,15 @@ public class ProductController {
             sortObj = Sort.by(Sort.Direction.DESC, "id");
         }
 
+        java.util.List<String> brandList = java.util.Collections.emptyList();
+        boolean hasBrands = false;
+        if (brand != null && !brand.isEmpty()) {
+            brandList = brand.stream().map(String::toLowerCase).toList();
+            hasBrands = true;
+        }
+
         Pageable paging = PageRequest.of(page, size, sortObj);
-        Page<Product> pageTuts = productRepository.findWithFilters(keyword, category, minPrice, maxPrice, brand, paging);
+        Page<Product> pageTuts = productRepository.findWithFilters(keyword, category, minPrice, maxPrice, brandList, hasBrands, paging);
 
         return ResponseEntity.ok(pageTuts);
     }
