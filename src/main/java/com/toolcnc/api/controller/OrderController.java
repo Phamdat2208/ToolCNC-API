@@ -54,7 +54,10 @@ public class OrderController {
                 .orderTrackingNumber(trackingNum)
                 .fullName(request.getFullName())
                 .phone(request.getPhone())
-                .city(request.getCity())
+                .provinceCode(request.getProvinceCode())
+                .provinceName(request.getProvinceName())
+                .wardCode(request.getWardCode())
+                .wardName(request.getWardName())
                 .address(request.getAddress())
                 .paymentMethod(request.getPaymentMethod())
                 .status("PENDING")
@@ -173,7 +176,8 @@ public class OrderController {
             orderMap.put("customerName", order.getFullName());
             orderMap.put("phone", order.getPhone());
             orderMap.put("address", order.getAddress());
-            orderMap.put("city", order.getCity());
+            orderMap.put("wardName", order.getWardName());
+            orderMap.put("provinceName", order.getProvinceName());
             orderMap.put("paymentMethod", order.getPaymentMethod());
             orderMap.put("totalPrice", order.getTotalPrice());
             orderMap.put("totalQuantity", order.getTotalQuantity());
@@ -211,5 +215,45 @@ public class OrderController {
             return ResponseEntity.ok(Map.of("message", "Order status updated successfully", "newStatus", order.getStatus()));
         }
         return ResponseEntity.badRequest().body(Map.of("message", "Status is required"));
+    }
+
+    @GetMapping("/track/{trackingNumber}")
+    public ResponseEntity<?> trackOrder(@PathVariable String trackingNumber) {
+        Optional<Order> orderOpt = orderRepository.findByOrderTrackingNumber(trackingNumber);
+        if (orderOpt.isEmpty()) {
+            return ResponseEntity.status(404).body(Map.of("message", "Không tìm thấy đơn hàng với mã tra cứu: " + trackingNumber));
+        }
+
+        Order order = orderOpt.get();
+        List<OrderItem> orderItemsList = order.getOrderItems() != null ? order.getOrderItems() : List.of();
+
+        List<Map<String, Object>> items = orderItemsList.stream().map(item -> {
+            Product product = item.getProductId() != null ? productRepository.findById(item.getProductId()).orElse(null) : null;
+            String productName = product != null && product.getName() != null ? product.getName() : "Sản phẩm không xác định";
+            String imageUrl = product != null && product.getImageUrl() != null ? product.getImageUrl() : "";
+
+            Map<String, Object> itemMap = new java.util.HashMap<>();
+            itemMap.put("productName", productName);
+            itemMap.put("imageUrl", imageUrl);
+            itemMap.put("quantity", item.getQuantity());
+            itemMap.put("unitPrice", item.getUnitPrice());
+            return itemMap;
+        }).collect(Collectors.toList());
+
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("trackingNumber", order.getOrderTrackingNumber());
+        result.put("fullName", order.getFullName());
+        result.put("phone", order.getPhone());
+        String fullAddress = order.getAddress() + ", " + order.getWardName() + ", " + order.getProvinceName();
+        result.put("address", fullAddress);
+        result.put("paymentMethod", order.getPaymentMethod());
+        result.put("totalPrice", order.getTotalPrice());
+        result.put("totalQuantity", order.getTotalQuantity());
+        result.put("status", order.getStatus());
+        result.put("dateCreated", order.getDateCreated());
+        result.put("lastUpdated", order.getLastUpdated());
+        result.put("items", items);
+
+        return ResponseEntity.ok(result);
     }
 }

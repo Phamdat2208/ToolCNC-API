@@ -7,7 +7,10 @@ import java.util.List;
 public class OrderRequest {
     private String fullName;
     private String phone;
-    private String city;
+    private Integer provinceCode;
+    private String provinceName;
+    private Integer wardCode;
+    private String wardName;
     private String address;
     private String paymentMethod;
     private List<OrderItemDto> items;

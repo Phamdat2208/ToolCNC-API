@@ -2,6 +2,7 @@ package com.toolcnc.api.controller;
 
 import com.toolcnc.api.dto.JwtResponse;
 import com.toolcnc.api.dto.LoginRequest;
+import com.toolcnc.api.dto.ProfileUpdateRequest;
 import com.toolcnc.api.dto.RegisterRequest;
 import com.toolcnc.api.model.Role;
 import com.toolcnc.api.model.User;
@@ -98,7 +99,33 @@ public class AuthController {
             "id", user.getId(),
             "username", user.getUsername(),
             "email", user.getEmail(),
+            "fullName", user.getFullName() != null ? user.getFullName() : "",
+            "phone", user.getPhone() != null ? user.getPhone() : "",
             "role", user.getRole().name()
+        ));
+    }
+
+    @PutMapping("/profile")
+    public ResponseEntity<?> updateProfile(@RequestBody ProfileUpdateRequest profileRequest) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getName())) {
+            return ResponseEntity.status(401).body(Map.of("message", "Unauthorized"));
+        }
+
+        Optional<User> userOpt = userRepository.findByUsername(auth.getName());
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(404).body(Map.of("message", "User not found"));
+        }
+
+        User user = userOpt.get();
+        user.setFullName(profileRequest.getFullName());
+        user.setPhone(profileRequest.getPhone());
+        userRepository.save(user);
+
+        return ResponseEntity.ok(Map.of(
+            "message", "Profile updated successfully!",
+            "fullName", user.getFullName(),
+            "phone", user.getPhone()
         ));
     }
 }
