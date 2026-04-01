@@ -10,6 +10,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -75,13 +78,51 @@ public class AdminProductController {
         if (req.getStock() != null) {
             existingProduct.setStock(req.getStock());
         }
-        existingProduct.setImageUrl(req.getImageUrl());
+        
+        // Optimize local storage by deleting old image when changed
+        if (req.getImageUrl() != null && !req.getImageUrl().equals(existingProduct.getImageUrl())) {
+            deleteOldImage(existingProduct.getImageUrl());
+            existingProduct.setImageUrl(req.getImageUrl());
+        } else if (req.getImageUrl() == null && existingProduct.getImageUrl() != null) {
+           // If request clears the image entirely
+           deleteOldImage(existingProduct.getImageUrl());
+           existingProduct.setImageUrl(null);
+        }
+
+        existingProduct.setSpecifications(req.getSpecifications());
 
         if (req.getCategoryId() != null) {
             categoryRepository.findById(req.getCategoryId()).ifPresent(existingProduct::setCategory);
         }
 
         return ResponseEntity.ok(productRepository.save(existingProduct));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteProduct(@PathVariable Long id) {
+        Optional<Product> optionalProduct = productRepository.findById(id);
+        if (optionalProduct.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Product product = optionalProduct.get();
+        // Remove locally hosted image file if exists
+        deleteOldImage(product.getImageUrl());
+        
+        productRepository.delete(product);
+        return ResponseEntity.ok().build();
+    }
+
+    private void deleteOldImage(String imageUrl) {
+        if (imageUrl != null && imageUrl.contains("/uploads/products/")) {
+            try {
+                String filename = imageUrl.substring(imageUrl.lastIndexOf("/") + 1);
+                Path imagePath = Paths.get("uploads/products/", filename);
+                Files.deleteIfExists(imagePath);
+            } catch (Exception e) {
+                System.err.println("Could not delete old image: " + e.getMessage());
+            }
+        }
     }
 
     private Product mapToProduct(ProductRequest req) {
@@ -106,6 +147,7 @@ public class AdminProductController {
                 .description(req.getDescription())
                 .stock(req.getStock() != null ? req.getStock() : 10)
                 .imageUrl(req.getImageUrl())
+                .specifications(req.getSpecifications())
                 .category(category)
                 .build();
     }

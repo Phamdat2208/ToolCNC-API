@@ -13,5 +13,6 @@ public class ProductRequest {
     private String description;
     private Integer stock;
     private String imageUrl;
+    private String specifications;
     private Long categoryId;
 }
