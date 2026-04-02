@@ -27,6 +27,7 @@ target/
 /.nb-gradle/
 
 ### Others ###
+src/main/resources/application-local.yml
 uploads/
 *.log
 *.temp
