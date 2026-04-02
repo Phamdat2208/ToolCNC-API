@@ -36,6 +36,7 @@ public class OrderController {
     private ProductRepository productRepository;
 
     @PostMapping("/checkout")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> createOrder(@RequestBody OrderRequest request) {
         
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -70,6 +71,20 @@ public class OrderController {
         
         if (request.getItems() != null) {
             for (OrderRequest.OrderItemDto itemDto : request.getItems()) {
+                Product product = productRepository.findById(itemDto.getProductId()).orElse(null);
+                if (product == null) {
+                    return ResponseEntity.status(400).body(Map.of("message", "Sản phẩm không tồn tại trong hệ thống."));
+                }
+                
+                int currentStock = product.getStock() != null ? product.getStock() : 10;
+                if (currentStock < itemDto.getQuantity()) {
+                    return ResponseEntity.status(400).body(Map.of("message", "Sản phẩm '" + product.getName() + "' không đủ hàng. Còn lại: " + currentStock));
+                }
+                
+                // Deduct stock
+                product.setStock(currentStock - itemDto.getQuantity());
+                productRepository.save(product);
+
                 OrderItem item = OrderItem.builder()
                         .productId(itemDto.getProductId())
                         .quantity(itemDto.getQuantity())
@@ -108,11 +123,22 @@ public class OrderController {
 
         List<Order> orders = orderRepository.findByUserIdOrderByDateCreatedDesc(userOpt.get().getId());
 
+        java.util.Set<Long> productIds = orders.stream()
+                .flatMap(order -> order.getOrderItems() != null ? order.getOrderItems().stream() : java.util.stream.Stream.empty())
+                .map(OrderItem::getProductId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+                
+        java.util.Map<Long, Product> productMap = new java.util.HashMap<>();
+        if (!productIds.isEmpty()) {
+            productRepository.findAllById(productIds).forEach(p -> productMap.put(p.getId(), p));
+        }
+
         List<Map<String, Object>> result = orders.stream().map(order -> {
             List<OrderItem> orderItemsList = order.getOrderItems() != null ? order.getOrderItems() : List.of();
             
             List<Map<String, Object>> items = orderItemsList.stream().map(item -> {
-                Product product = item.getProductId() != null ? productRepository.findById(item.getProductId()).orElse(null) : null;
+                Product product = item.getProductId() != null ? productMap.get(item.getProductId()) : null;
                 String productName = product != null && product.getName() != null ? product.getName() : "Sản phẩm không xác định";
                 String imageUrl = product != null && product.getImageUrl() != null ? product.getImageUrl() : "";
 
@@ -131,6 +157,7 @@ public class OrderController {
             orderMap.put("totalPrice", order.getTotalPrice());
             orderMap.put("totalQuantity", order.getTotalQuantity());
             orderMap.put("status", order.getStatus());
+            orderMap.put("cancelReason", order.getCancelReason());
             orderMap.put("dateCreated", order.getDateCreated());
             orderMap.put("items", items);
             return orderMap;
@@ -153,11 +180,22 @@ public class OrderController {
 
         List<Order> orders = orderRepository.findAllByOrderByDateCreatedDesc();
 
+        java.util.Set<Long> productIds = orders.stream()
+                .flatMap(order -> order.getOrderItems() != null ? order.getOrderItems().stream() : java.util.stream.Stream.empty())
+                .map(OrderItem::getProductId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+                
+        java.util.Map<Long, Product> productMap = new java.util.HashMap<>();
+        if (!productIds.isEmpty()) {
+            productRepository.findAllById(productIds).forEach(p -> productMap.put(p.getId(), p));
+        }
+
         List<Map<String, Object>> result = orders.stream().map(order -> {
             List<OrderItem> orderItemsList = order.getOrderItems() != null ? order.getOrderItems() : List.of();
             
             List<Map<String, Object>> items = orderItemsList.stream().map(item -> {
-                Product product = item.getProductId() != null ? productRepository.findById(item.getProductId()).orElse(null) : null;
+                Product product = item.getProductId() != null ? productMap.get(item.getProductId()) : null;
                 String productName = product != null && product.getName() != null ? product.getName() : "Sản phẩm không xác định";
                 String imageUrl = product != null && product.getImageUrl() != null ? product.getImageUrl() : "";
 
@@ -182,6 +220,7 @@ public class OrderController {
             orderMap.put("totalPrice", order.getTotalPrice());
             orderMap.put("totalQuantity", order.getTotalQuantity());
             orderMap.put("status", order.getStatus());
+            orderMap.put("cancelReason", order.getCancelReason());
             orderMap.put("dateCreated", order.getDateCreated());
             orderMap.put("items", items);
             return orderMap;
@@ -191,6 +230,7 @@ public class OrderController {
     }
 
     @PutMapping("/{id}/status")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> updateOrderStatus(@PathVariable Long id, @RequestBody Map<String, String> payload) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()) {
@@ -209,12 +249,78 @@ public class OrderController {
         
         Order order = orderOpt.get();
         if(payload.containsKey("status")) {
-            order.setStatus(payload.get("status"));
+            String newStatus = payload.get("status").toUpperCase();
+            String oldStatus = order.getStatus();
+
+            // Nếu admin cập nhật thành CANCELLED thì hoàn tồn kho
+            if ("CANCELLED".equals(newStatus) && !"CANCELLED".equals(oldStatus)) {
+                if (payload.containsKey("cancelReason")) {
+                    order.setCancelReason(payload.get("cancelReason"));
+                }
+                
+                if (order.getOrderItems() != null) {
+                    for (OrderItem item : order.getOrderItems()) {
+                        productRepository.findById(item.getProductId()).ifPresent(product -> {
+                            product.setStock((product.getStock() != null ? product.getStock() : 0) + item.getQuantity());
+                            productRepository.save(product);
+                        });
+                    }
+                }
+            }
+
+            order.setStatus(newStatus);
             order.setLastUpdated(LocalDateTime.now());
             orderRepository.save(order);
             return ResponseEntity.ok(Map.of("message", "Order status updated successfully", "newStatus", order.getStatus()));
         }
         return ResponseEntity.badRequest().body(Map.of("message", "Status is required"));
+    }
+
+    @PutMapping("/{id}/cancel")
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<?> cancelOrder(@PathVariable Long id, @RequestBody Map<String, String> payload) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            return ResponseEntity.status(401).body(Map.of("message", "Unauthorized"));
+        }
+
+        Optional<User> userOpt = userRepository.findByUsername(auth.getName());
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(404).body(Map.of("message", "User not found"));
+        }
+
+        Optional<Order> orderOpt = orderRepository.findById(id);
+        if (orderOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Order order = orderOpt.get();
+        if (!order.getUser().getId().equals(userOpt.get().getId())) {
+             return ResponseEntity.status(403).body(Map.of("message", "Bạn không có quyền thao tác trên đơn hàng này"));
+        }
+
+        if (!"PENDING".equals(order.getStatus())) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Bạn chỉ có thể hủy những đơn hàng đang chờ xử lý. Vui lòng liên hệ quản trị viên."));
+        }
+
+        // Hoàn lại kho
+        if (order.getOrderItems() != null) {
+            for (OrderItem item : order.getOrderItems()) {
+                productRepository.findById(item.getProductId()).ifPresent(product -> {
+                    product.setStock((product.getStock() != null ? product.getStock() : 0) + item.getQuantity());
+                    productRepository.save(product);
+                });
+            }
+        }
+
+        order.setStatus("CANCELLED");
+        order.setLastUpdated(LocalDateTime.now());
+        if (payload.containsKey("cancelReason")) {
+            order.setCancelReason(payload.get("cancelReason"));
+        }
+        orderRepository.save(order);
+
+        return ResponseEntity.ok(Map.of("message", "Đã hủy đơn hàng thành công", "newStatus", "CANCELLED"));
     }
 
     @GetMapping("/track/{trackingNumber}")
@@ -250,6 +356,7 @@ public class OrderController {
         result.put("totalPrice", order.getTotalPrice());
         result.put("totalQuantity", order.getTotalQuantity());
         result.put("status", order.getStatus());
+        result.put("cancelReason", order.getCancelReason());
         result.put("dateCreated", order.getDateCreated());
         result.put("lastUpdated", order.getLastUpdated());
         result.put("items", items);

@@ -12,6 +12,9 @@ import java.util.Optional;
 public interface OrderRepository extends JpaRepository<Order, Long> {
     Page<Order> findByUserId(Long userId, Pageable pageable);
     Optional<Order> findByOrderTrackingNumber(String trackingNumber);
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"orderItems"})
     java.util.List<Order> findByUserIdOrderByDateCreatedDesc(Long userId);
+
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"orderItems"})
     java.util.List<Order> findAllByOrderByDateCreatedDesc();
 }

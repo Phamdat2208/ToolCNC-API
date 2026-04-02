@@ -36,6 +36,9 @@ public class Order {
 
     private String status; // PENDING, PROCESSING, COMPLETED, CANCELLED
 
+    @Column(columnDefinition = "TEXT")
+    private String cancelReason;
+
     private LocalDateTime dateCreated;
 
     private LocalDateTime lastUpdated;
