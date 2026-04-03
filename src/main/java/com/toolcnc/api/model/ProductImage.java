@@ -6,28 +6,25 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "categories")
-public class Category {
+@Table(name = "product_images")
+public class ProductImage {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
-    private String name;
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String url;
+
+    private Integer sortOrder;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "parent_id")
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    private Category parent;
-
-    @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL)
-    private List<Category> children;
+    @JoinColumn(name = "product_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonBackReference
+    private Product product;
 }

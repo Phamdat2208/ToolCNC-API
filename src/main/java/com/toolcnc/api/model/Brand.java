@@ -5,16 +5,16 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.util.List;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "categories")
-public class Category {
+@Table(name = "brands")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+public class Brand {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -23,11 +23,9 @@ public class Category {
     @Column(nullable = false, unique = true)
     private String name;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "parent_id")
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    private Category parent;
+    @Column(columnDefinition = "TEXT")
+    private String logoUrl;
 
-    @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL)
-    private List<Category> children;
+    @Column(columnDefinition = "TEXT")
+    private String description;
 }

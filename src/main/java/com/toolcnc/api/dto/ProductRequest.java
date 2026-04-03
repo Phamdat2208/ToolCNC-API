@@ -2,6 +2,7 @@ package com.toolcnc.api.dto;
 
 import lombok.Data;
 import java.math.BigDecimal;
+import java.util.List;
 
 @Data
 public class ProductRequest {
@@ -9,10 +10,11 @@ public class ProductRequest {
     private String sku;
     private BigDecimal price;
     private BigDecimal oldPrice;
-    private String brand;
+    private Long brandId;
     private String description;
     private Integer stock;
     private String imageUrl;
+    private List<String> imageGallery; // max 8 images
     private String specifications;
     private Long categoryId;
 }

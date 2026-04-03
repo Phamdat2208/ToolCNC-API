@@ -7,6 +7,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.ArrayList;
 
 @Data
 @Builder
@@ -31,7 +33,10 @@ public class Product {
 
     private BigDecimal oldPrice;
 
-    private String brand;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "brand_id")
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private Brand brand;
 
     @Column(columnDefinition = "TEXT")
     private String description;
@@ -40,6 +45,11 @@ public class Product {
 
     @Column(columnDefinition = "TEXT")
     private String imageUrl;
+
+    @Builder.Default
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    @com.fasterxml.jackson.annotation.JsonManagedReference
+    private List<ProductImage> images = new ArrayList<>();
 
     @Column(columnDefinition = "TEXT")
     private String specifications;

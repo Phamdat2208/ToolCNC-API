@@ -11,4 +11,11 @@ public class CategoryResponse {
     private Long id;
     private String name;
     private Long productCount;
+    private java.util.List<CategoryResponse> children;
+
+    public CategoryResponse(Long id, String name, Long productCount) {
+        this.id = id;
+        this.name = name;
+        this.productCount = productCount;
+    }
 }

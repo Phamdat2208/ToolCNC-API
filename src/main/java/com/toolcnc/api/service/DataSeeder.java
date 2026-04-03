@@ -18,16 +18,24 @@ public class DataSeeder implements CommandLineRunner {
     @Override
     public void run(String... args) throws Exception {
         if (categoryRepository.count() == 0) {
-            List<Category> categories = Arrays.asList(
-                Category.builder().name("Máy Phay CNC").description("Danh mục máy phay").build(),
-                Category.builder().name("Máy Tiện CNC").description("Danh mục máy tiện").build(),
-                Category.builder().name("Dao Cụ Cắt Gọt").description("Danh mục dao cụ").build(),
-                Category.builder().name("Phụ kiện kẹp chặt").description("Danh mục phụ kiện kẹp").build(),
-                Category.builder().name("Dầu mỡ công nghiệp").description("Danh mục dầu mỡ").build(),
-                Category.builder().name("Dụng cụ đo kiểm").description("Danh mục dụng cụ đo").build()
-            );
-            categoryRepository.saveAll(categories);
-            System.out.println("Categories seeded successfully.");
+            // Root Categories
+            Category daoPhay = Category.builder().name("Dao Phay (End Mill)").build();
+            Category chipTien = Category.builder().name("Chip Tiện (Insert)").build();
+            Category muiKhoan = Category.builder().name("Mũi Khoan (Drill)").build();
+            
+            categoryRepository.saveAll(Arrays.asList(daoPhay, chipTien, muiKhoan));
+
+            // Subcategories for Dao Phay
+            Category daoPhayNgon = Category.builder().name("Dao Phay Ngón (Solid End Mill)").parent(daoPhay).build();
+            Category daoPhayCau = Category.builder().name("Dao Phay Cầu (Ball Nose)").parent(daoPhay).build();
+            
+            // Subcategories for Chip Tiện
+            Category chipTienNgoai = Category.builder().name("Chip Tiện Ngoài").parent(chipTien).build();
+            Category chipTienTrong = Category.builder().name("Chip Tiện Trong").parent(chipTien).build();
+
+            categoryRepository.saveAll(Arrays.asList(daoPhayNgon, daoPhayCau, chipTienNgoai, chipTienTrong));
+            
+            System.out.println("Hierarchical categories seeded successfully.");
         }
     }
 }

@@ -3,6 +3,8 @@ package com.toolcnc.api.controller;
 import com.toolcnc.api.dto.ProductRequest;
 import com.toolcnc.api.model.Category;
 import com.toolcnc.api.model.Product;
+import com.toolcnc.api.model.ProductImage;
+import com.toolcnc.api.repository.BrandRepository;
 import com.toolcnc.api.repository.CategoryRepository;
 import com.toolcnc.api.repository.ProductRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,13 +31,24 @@ public class AdminProductController {
     @Autowired
     private CategoryRepository categoryRepository;
 
+    @Autowired
+    private BrandRepository brandRepository;
+
+    @GetMapping
+    public ResponseEntity<List<Product>> getAllProducts() {
+        return ResponseEntity.ok(productRepository.findAll());
+    }
+
     @PostMapping
     public ResponseEntity<?> createProduct(@RequestBody ProductRequest request) {
-        if (productRepository.existsByNameIgnoreCase(request.getName())) {
-            return ResponseEntity.badRequest().body("Tên sản phẩm '" + request.getName() + "' đã tồn tại!");
+        if (productRepository.existsBySku(request.getSku())) {
+            return ResponseEntity.badRequest().body("Mã SKU đã tồn tại!");
         }
         Product product = mapToProduct(request);
-        return ResponseEntity.ok(productRepository.save(product));
+        Product saved = productRepository.save(product);
+        // Save gallery images (max 8)
+        applyGallery(saved, request.getImageGallery());
+        return ResponseEntity.ok(productRepository.save(saved));
     }
 
     @PostMapping("/bulk")
@@ -62,19 +75,14 @@ public class AdminProductController {
 
         Product existingProduct = optionalProduct.get();
         
-        // Kiểm tra trùng tên khi đổi tên (không phân biệt hoa thường, trừ chính nó)
-        if (productRepository.existsByNameIgnoreCaseAndIdNot(req.getName(), id)) {
-            return ResponseEntity.badRequest().body("Tên sản phẩm '" + req.getName() + "' đã tồn tại!");
-        }
-
         existingProduct.setName(req.getName());
         if (req.getSku() != null && !req.getSku().isEmpty()) {
             existingProduct.setSku(req.getSku());
         }
         existingProduct.setPrice(req.getPrice());
         existingProduct.setOldPrice(req.getOldPrice());
-        existingProduct.setBrand(req.getBrand());
         existingProduct.setDescription(req.getDescription());
+        
         if (req.getStock() != null) {
             existingProduct.setStock(req.getStock());
         }
@@ -84,7 +92,6 @@ public class AdminProductController {
             deleteOldImage(existingProduct.getImageUrl());
             existingProduct.setImageUrl(req.getImageUrl());
         } else if (req.getImageUrl() == null && existingProduct.getImageUrl() != null) {
-           // If request clears the image entirely
            deleteOldImage(existingProduct.getImageUrl());
            existingProduct.setImageUrl(null);
         }
@@ -94,6 +101,14 @@ public class AdminProductController {
         if (req.getCategoryId() != null) {
             categoryRepository.findById(req.getCategoryId()).ifPresent(existingProduct::setCategory);
         }
+
+        // --- NEW BRAND LOGIC ---
+        if (req.getBrandId() != null) {
+            brandRepository.findById(req.getBrandId()).ifPresent(existingProduct::setBrand);
+        }
+
+        // Update gallery images (max 8)
+        applyGallery(existingProduct, req.getImageGallery());
 
         return ResponseEntity.ok(productRepository.save(existingProduct));
     }
@@ -106,9 +121,7 @@ public class AdminProductController {
         }
 
         Product product = optionalProduct.get();
-        // Remove locally hosted image file if exists
         deleteOldImage(product.getImageUrl());
-        
         productRepository.delete(product);
         return ResponseEntity.ok().build();
     }
@@ -125,30 +138,50 @@ public class AdminProductController {
         }
     }
 
-    private Product mapToProduct(ProductRequest req) {
-        if (req.getCategoryId() == null) {
-            throw new RuntimeException("Category ID is required for a new product");
+    private void applyGallery(Product product, List<String> urls) {
+        if (product.getImages() == null) {
+            product.setImages(new java.util.ArrayList<>());
         }
-        
-        Category category = categoryRepository.findById(req.getCategoryId())
-                .orElseThrow(() -> new RuntimeException("Category not found with id: " + req.getCategoryId()));
+        product.getImages().clear();
+        if (urls == null || urls.isEmpty()) return;
+        int limit = Math.min(urls.size(), 8); // Max 8 images
+        for (int i = 0; i < limit; i++) {
+            String url = urls.get(i);
+            if (url != null && !url.isBlank()) {
+                ProductImage img = ProductImage.builder()
+                        .url(url.trim())
+                        .sortOrder(i)
+                        .product(product)
+                        .build();
+                product.getImages().add(img);
+            }
+        }
+    }
 
+    private Product mapToProduct(ProductRequest req) {
         String sku = req.getSku();
         if (sku == null || sku.isEmpty()) {
             sku = "SKU-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         }
 
-        return Product.builder()
+        Product.ProductBuilder builder = Product.builder()
                 .name(req.getName())
                 .sku(sku)
                 .price(req.getPrice())
                 .oldPrice(req.getOldPrice())
-                .brand(req.getBrand())
                 .description(req.getDescription())
                 .stock(req.getStock() != null ? req.getStock() : 10)
                 .imageUrl(req.getImageUrl())
-                .specifications(req.getSpecifications())
-                .category(category)
-                .build();
+                .specifications(req.getSpecifications());
+
+        if (req.getCategoryId() != null) {
+            categoryRepository.findById(req.getCategoryId()).ifPresent(builder::category);
+        }
+
+        if (req.getBrandId() != null) {
+            brandRepository.findById(req.getBrandId()).ifPresent(builder::brand);
+        }
+
+        return builder.build();
     }
 }

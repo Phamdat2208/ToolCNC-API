@@ -20,6 +20,33 @@ public class CategoryController {
 
     @GetMapping
     public ResponseEntity<List<CategoryResponse>> getAllCategories() {
-        return ResponseEntity.ok(categoryRepository.findAllWithProductCount());
+        List<CategoryResponse> all = categoryRepository.findAllWithProductCount();
+        
+        // Build hierarchy map
+        java.util.Map<Long, CategoryResponse> map = new java.util.HashMap<>();
+        for (CategoryResponse res : all) {
+            map.put(res.getId(), res);
+        }
+
+        // Get actual entities to find parent-child relationships
+        List<Category> entities = categoryRepository.findAll();
+        List<CategoryResponse> roots = new java.util.ArrayList<>();
+
+        for (Category entity : entities) {
+            CategoryResponse current = map.get(entity.getId());
+            if (entity.getParent() == null) {
+                roots.add(current);
+            } else {
+                CategoryResponse parent = map.get(entity.getParent().getId());
+                if (parent != null) {
+                    if (parent.getChildren() == null) {
+                        parent.setChildren(new java.util.ArrayList<>());
+                    }
+                    parent.getChildren().add(current);
+                }
+            }
+        }
+
+        return ResponseEntity.ok(roots);
     }
 }

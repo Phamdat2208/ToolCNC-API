@@ -17,13 +17,15 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     boolean existsByName(String name);
     boolean existsByNameIgnoreCase(String name);
     boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);
+    boolean existsBySku(String sku);
+    boolean existsBySkuAndIdNot(String sku, Long id);
 
     @Query("SELECT p FROM Product p WHERE " +
            "(:keyword IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :keyword, '%'))) AND " +
            "(:category IS NULL OR LOWER(p.category.name) LIKE LOWER(CONCAT('%', :category, '%'))) AND " +
            "(:minPrice IS NULL OR p.price >= :minPrice) AND " +
            "(:maxPrice IS NULL OR p.price <= :maxPrice) AND " +
-           "(:hasBrands = false OR LOWER(p.brand) IN :brands)")
+           "(:hasBrands = false OR LOWER(p.brand.name) IN :brands)")
     Page<Product> findWithFilters(
         @Param("keyword") String keyword,
         @Param("category") String category,
