@@ -4,8 +4,8 @@ server:
 spring:
   application:
     name: tool-cnc-api
-  # profiles:
-  #   include: local
+  profiles:
+    include: local
 
   # MySQL
   datasource:

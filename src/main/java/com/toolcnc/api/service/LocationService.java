@@ -22,17 +22,15 @@ public class LocationService {
     @PostConstruct
     public void init() {
         ObjectMapper mapper = new ObjectMapper();
-        try {
-            // Path relative to the project root where the JSON files are located
-            String path = "database-province-ward/commune-ward.json";
-            File file = new File(path);
-            
-            if (!file.exists()) {
-                System.err.println("Location data file not found at: " + file.getAbsolutePath());
+        String path = "database-province-ward/commune-ward.json";
+        
+        try (java.io.InputStream is = getClass().getClassLoader().getResourceAsStream(path)) {
+            if (is == null) {
+                System.err.println("Location data file not found in classpath at: " + path);
                 return;
             }
 
-            JsonNode root = mapper.readTree(file);
+            JsonNode root = mapper.readTree(is);
             if (root.isArray()) {
                 for (JsonNode provinceNode : root) {
                     int pCode = provinceNode.get("code").asInt();
@@ -52,9 +50,9 @@ public class LocationService {
                     provinceToWardsMap.put(pCode, wards);
                 }
             }
-            System.out.println("Location data loaded successfully: " + provinces.size() + " provinces.");
+            System.out.println("Location data loaded successfully from resources: " + provinces.size() + " provinces.");
         } catch (IOException e) {
-            System.err.println("Error loading location data: " + e.getMessage());
+            System.err.println("Error loading location data from classpath: " + e.getMessage());
             e.printStackTrace();
         }
     }
