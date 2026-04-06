@@ -41,10 +41,29 @@ public class AdminProductController {
 
     @PostMapping
     public ResponseEntity<?> createProduct(@RequestBody ProductRequest request) {
-        if (productRepository.existsBySku(request.getSku())) {
+        if (request.getSku() != null && !request.getSku().isEmpty() && productRepository.existsBySku(request.getSku())) {
             return ResponseEntity.badRequest().body("Mã SKU đã tồn tại!");
         }
         Product product = mapToProduct(request);
+        
+        // Handle variants for new product
+        if (Boolean.TRUE.equals(request.getHasVariants()) && request.getVariants() != null && !request.getVariants().isEmpty()) {
+            request.getVariants().forEach(vReq -> {
+                com.toolcnc.api.model.ProductVariant variant = com.toolcnc.api.model.ProductVariant.builder()
+                        .sku(generateVariantSku(product.getSku(), vReq.getSku()))
+                        .variantName(vReq.getVariantName())
+                        .price(vReq.getPrice())
+                        .stock(vReq.getStock())
+                        .product(product)
+                        .build();
+                product.getVariants().add(variant);
+            });
+            calculatePriceRange(product, request.getVariants());
+        } else {
+            product.setMinPrice(product.getPrice());
+            product.setMaxPrice(product.getPrice());
+        }
+
         Product saved = productRepository.save(product);
         // Save gallery images (max 8)
         applyGallery(saved, request.getImageGallery());
@@ -110,6 +129,46 @@ public class AdminProductController {
         // Update gallery images (max 8)
         applyGallery(existingProduct, req.getImageGallery());
 
+        // --- VARIANTS LOGIC ---
+        existingProduct.setHasVariants(Boolean.TRUE.equals(req.getHasVariants()));
+        if (Boolean.TRUE.equals(req.getHasVariants()) && req.getVariants() != null) {
+            // Remove variants not in request
+            java.util.Set<Long> reqIds = req.getVariants().stream()
+                    .map(com.toolcnc.api.dto.ProductVariantRequest::getId)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(java.util.stream.Collectors.toSet());
+            existingProduct.getVariants().removeIf(v -> !reqIds.contains(v.getId()));
+
+            // Update or Add
+            req.getVariants().forEach(vReq -> {
+                if (vReq.getId() != null) {
+                    existingProduct.getVariants().stream()
+                            .filter(v -> v.getId().equals(vReq.getId()))
+                            .findFirst()
+                            .ifPresent(v -> {
+                                v.setSku(generateVariantSku(existingProduct.getSku(), vReq.getSku()));
+                                v.setVariantName(vReq.getVariantName());
+                                v.setPrice(vReq.getPrice());
+                                v.setStock(vReq.getStock());
+                            });
+                } else {
+                    com.toolcnc.api.model.ProductVariant variant = com.toolcnc.api.model.ProductVariant.builder()
+                            .sku(generateVariantSku(existingProduct.getSku(), vReq.getSku()))
+                            .variantName(vReq.getVariantName())
+                            .price(vReq.getPrice())
+                            .stock(vReq.getStock())
+                            .product(existingProduct)
+                            .build();
+                    existingProduct.getVariants().add(variant);
+                }
+            });
+            calculatePriceRange(existingProduct, req.getVariants());
+        } else {
+            existingProduct.getVariants().clear();
+            existingProduct.setMinPrice(existingProduct.getPrice());
+            existingProduct.setMaxPrice(existingProduct.getPrice());
+        }
+
         return ResponseEntity.ok(productRepository.save(existingProduct));
     }
 
@@ -167,10 +226,11 @@ public class AdminProductController {
         Product.ProductBuilder builder = Product.builder()
                 .name(req.getName())
                 .sku(sku)
+                .hasVariants(Boolean.TRUE.equals(req.getHasVariants()))
                 .price(req.getPrice())
                 .oldPrice(req.getOldPrice())
                 .description(req.getDescription())
-                .stock(req.getStock() != null ? req.getStock() : 10)
+                .stock(req.getStock() != null ? req.getStock() : 0)
                 .imageUrl(req.getImageUrl())
                 .specifications(req.getSpecifications());
 
@@ -183,5 +243,38 @@ public class AdminProductController {
         }
 
         return builder.build();
+    }
+
+    private String generateVariantSku(String parentSku, String variantSkuInput) {
+        if (variantSkuInput != null && !variantSkuInput.isBlank()) {
+            return variantSkuInput.trim();
+        }
+        return parentSku + "-V-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+    }
+
+    private void calculatePriceRange(Product product, List<com.toolcnc.api.dto.ProductVariantRequest> variants) {
+        if (variants == null || variants.isEmpty()) {
+            product.setMinPrice(product.getPrice());
+            product.setMaxPrice(product.getPrice());
+            return;
+        }
+
+        java.math.BigDecimal min = variants.stream()
+                .map(com.toolcnc.api.dto.ProductVariantRequest::getPrice)
+                .filter(java.util.Objects::nonNull)
+                .min(java.math.BigDecimal::compareTo)
+                .orElse(product.getPrice());
+
+        java.math.BigDecimal max = variants.stream()
+                .map(com.toolcnc.api.dto.ProductVariantRequest::getPrice)
+                .filter(java.util.Objects::nonNull)
+                .max(java.math.BigDecimal::compareTo)
+                .orElse(product.getPrice());
+
+        product.setMinPrice(min);
+        product.setMaxPrice(max);
+        
+        // Ensure price field is also consistent (usually min price)
+        product.setPrice(min);
     }
 }

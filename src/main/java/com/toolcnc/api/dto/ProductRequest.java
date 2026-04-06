@@ -17,4 +17,6 @@ public class ProductRequest {
     private List<String> imageGallery; // max 8 images
     private String specifications;
     private Long categoryId;
+    private Boolean hasVariants;
+    private List<ProductVariantRequest> variants;
 }

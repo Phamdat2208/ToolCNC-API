@@ -22,6 +22,8 @@ public class Product {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    private Boolean hasVariants = false;
+
     @Column(nullable = false)
     private String name;
 
@@ -32,6 +34,10 @@ public class Product {
     private BigDecimal price;
 
     private BigDecimal oldPrice;
+
+    private BigDecimal minPrice;
+
+    private BigDecimal maxPrice;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "brand_id")
@@ -45,6 +51,11 @@ public class Product {
 
     @Column(columnDefinition = "TEXT")
     private String imageUrl;
+
+    @Builder.Default
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    @com.fasterxml.jackson.annotation.JsonManagedReference
+    private List<ProductVariant> variants = new ArrayList<>();
 
     @Builder.Default
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)

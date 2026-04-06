@@ -6,6 +6,7 @@ import com.toolcnc.api.model.Product;
 import com.toolcnc.api.model.User;
 import com.toolcnc.api.repository.CartItemRepository;
 import com.toolcnc.api.repository.ProductRepository;
+import com.toolcnc.api.repository.ProductVariantRepository;
 import com.toolcnc.api.repository.UserRepository;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +28,9 @@ public class CartController {
 
     @Autowired
     private ProductRepository productRepository;
+
+    @Autowired
+    private ProductVariantRepository productVariantRepository;
 
     @Autowired
     private UserRepository userRepository;
@@ -57,8 +61,17 @@ public class CartController {
         }
         Product product = optionalProduct.get();
 
-        // Check if item already in cart
-        Optional<CartItem> existingItemObj = cartItemRepository.findByUserAndProduct(user, product);
+        // Handle Variant
+        com.toolcnc.api.model.ProductVariant variant = null;
+        if (request.getVariantId() != null) {
+            Optional<com.toolcnc.api.model.ProductVariant> vOpt = productVariantRepository.findById(request.getVariantId());
+            if (vOpt.isPresent()) {
+                variant = vOpt.get();
+            }
+        }
+
+        // Check if item (Product + Variant) already in cart
+        Optional<CartItem> existingItemObj = cartItemRepository.findByUserAndProductAndVariant(user, product, variant);
         
         CartItem savedItem;
         if (existingItemObj.isPresent()) {
@@ -69,6 +82,7 @@ public class CartController {
             CartItem newItem = CartItem.builder()
                     .user(user)
                     .product(product)
+                    .variant(variant)
                     .quantity(request.getQuantity())
                     .build();
             savedItem = cartItemRepository.save(newItem);
@@ -77,19 +91,13 @@ public class CartController {
         return ResponseEntity.ok(savedItem);
     }
 
-    @PutMapping("/{productId:\\d+}")
-    public ResponseEntity<?> updateCartItem(@PathVariable Long productId, @Valid @RequestBody CartRequest request, Authentication auth) {
+    @PutMapping("/{id:\\d+}")
+    public ResponseEntity<?> updateCartItem(@PathVariable Long id, @Valid @RequestBody CartRequest request, Authentication auth) {
         User user = getAuthenticatedUser(auth);
         if (user == null) return ResponseEntity.status(401).build();
 
-        Optional<Product> optionalProduct = productRepository.findById(productId);
-        if (optionalProduct.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("message", "Product does not exist"));
-        }
-        Product product = optionalProduct.get();
-
-        Optional<CartItem> existingItemObj = cartItemRepository.findByUserAndProduct(user, product);
-        if (existingItemObj.isEmpty()) {
+        Optional<CartItem> existingItemObj = cartItemRepository.findById(id);
+        if (existingItemObj.isEmpty() || !existingItemObj.get().getUser().getId().equals(user.getId())) {
             return ResponseEntity.notFound().build();
         }
 
@@ -98,18 +106,13 @@ public class CartController {
         return ResponseEntity.ok(cartItemRepository.save(item));
     }
 
-    @DeleteMapping("/{productId:\\d+}")
-    public ResponseEntity<?> removeCartItem(@PathVariable Long productId, Authentication auth) {
+    @DeleteMapping("/{id:\\d+}")
+    public ResponseEntity<?> removeCartItem(@PathVariable Long id, Authentication auth) {
         User user = getAuthenticatedUser(auth);
         if (user == null) return ResponseEntity.status(401).build();
 
-        Optional<Product> optionalProduct = productRepository.findById(productId);
-        if (optionalProduct.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("message", "Product does not exist"));
-        }
-        
-        Optional<CartItem> existingItemObj = cartItemRepository.findByUserAndProduct(user, optionalProduct.get());
-        if (existingItemObj.isPresent()) {
+        Optional<CartItem> existingItemObj = cartItemRepository.findById(id);
+        if (existingItemObj.isPresent() && existingItemObj.get().getUser().getId().equals(user.getId())) {
             cartItemRepository.delete(existingItemObj.get());
         }
         
