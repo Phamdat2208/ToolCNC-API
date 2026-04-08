@@ -18,6 +18,7 @@ public class OrderRequest {
     @Data
     public static class OrderItemDto {
         private Long productId;
+        private Long variantId;
         private int quantity;
         private double unitPrice;
     }

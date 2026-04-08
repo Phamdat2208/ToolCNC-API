@@ -20,6 +20,10 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     boolean existsBySku(String sku);
     boolean existsBySkuAndIdNot(String sku, Long id);
 
+    @Query("SELECT p.name FROM Product p WHERE LOWER(p.name) IN :names")
+    java.util.List<String> findExistingNames(@Param("names") java.util.List<String> lowerCaseNames);
+
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"category", "brand"})
     @Query("SELECT p FROM Product p WHERE " +
            "(:keyword IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :keyword, '%'))) AND " +
            "(:category IS NULL OR LOWER(p.category.name) LIKE LOWER(CONCAT('%', :category, '%'))) AND " +

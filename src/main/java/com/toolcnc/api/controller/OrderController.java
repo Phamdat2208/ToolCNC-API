@@ -1,12 +1,10 @@
 package com.toolcnc.api.controller;
 
 import com.toolcnc.api.dto.OrderRequest;
-import com.toolcnc.api.model.Order;
-import com.toolcnc.api.model.OrderItem;
-import com.toolcnc.api.model.Product;
-import com.toolcnc.api.model.User;
+import com.toolcnc.api.model.*;
 import com.toolcnc.api.repository.OrderRepository;
 import com.toolcnc.api.repository.ProductRepository;
+import com.toolcnc.api.repository.ProductVariantRepository;
 import com.toolcnc.api.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -34,6 +32,9 @@ public class OrderController {
 
     @Autowired
     private ProductRepository productRepository;
+
+    @Autowired
+    private ProductVariantRepository productVariantRepository;
 
     @PostMapping("/checkout")
     @org.springframework.transaction.annotation.Transactional
@@ -76,17 +77,38 @@ public class OrderController {
                     return ResponseEntity.status(400).body(Map.of("message", "Sản phẩm không tồn tại trong hệ thống."));
                 }
                 
-                int currentStock = product.getStock() != null ? product.getStock() : 10;
-                if (currentStock < itemDto.getQuantity()) {
-                    return ResponseEntity.status(400).body(Map.of("message", "Sản phẩm '" + product.getName() + "' không đủ hàng. Còn lại: " + currentStock));
+                // Stock logic for variants vs simple products
+                if (itemDto.getVariantId() != null) {
+                    ProductVariant variant = productVariantRepository.findById(itemDto.getVariantId()).orElse(null);
+                    if (variant == null) {
+                        return ResponseEntity.status(400).body(Map.of("message", "Phiên bản sản phẩm không tồn tại."));
+                    }
+                    if (variant.getStock() < itemDto.getQuantity()) {
+                        return ResponseEntity.status(400).body(Map.of("message", "Phiên bản '" + variant.getVariantName() + "' không đủ hàng. Còn lại: " + variant.getStock()));
+                    }
+                    // Deduct variant stock
+                    variant.setStock(variant.getStock() - itemDto.getQuantity());
+                    productVariantRepository.save(variant);
+                    
+                    // Sync total stock on product
+                    Integer totalStock = product.getTotalStock();
+                    if (totalStock != null) {
+                        product.setTotalStock(totalStock - itemDto.getQuantity());
+                        productRepository.save(product);
+                    }
+                } else {
+                    int currentStock = product.getTotalStock() != null ? product.getTotalStock() : 10;
+                    if (currentStock < itemDto.getQuantity()) {
+                        return ResponseEntity.status(400).body(Map.of("message", "Sản phẩm '" + product.getName() + "' không đủ hàng. Còn lại: " + currentStock));
+                    }
+                    // Deduct product stock
+                    product.setTotalStock(currentStock - itemDto.getQuantity());
+                    productRepository.save(product);
                 }
-                
-                // Deduct stock
-                product.setStock(currentStock - itemDto.getQuantity());
-                productRepository.save(product);
 
                 OrderItem item = OrderItem.builder()
                         .productId(itemDto.getProductId())
+                        .variantId(itemDto.getVariantId())
                         .quantity(itemDto.getQuantity())
                         .unitPrice(BigDecimal.valueOf(itemDto.getUnitPrice()))
                         .build();
@@ -134,6 +156,17 @@ public class OrderController {
             productRepository.findAllById(productIds).forEach(p -> productMap.put(p.getId(), p));
         }
 
+        java.util.Set<Long> variantIds = orders.stream()
+                .flatMap(order -> order.getOrderItems() != null ? order.getOrderItems().stream() : java.util.stream.Stream.empty())
+                .map(OrderItem::getVariantId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        java.util.Map<Long, ProductVariant> variantMap = new java.util.HashMap<>();
+        if (!variantIds.isEmpty()) {
+            productVariantRepository.findAllById(variantIds).forEach(v -> variantMap.put(v.getId(), v));
+        }
+
         List<Map<String, Object>> result = orders.stream().map(order -> {
             List<OrderItem> orderItemsList = order.getOrderItems() != null ? order.getOrderItems() : List.of();
             
@@ -148,6 +181,22 @@ public class OrderController {
                 itemMap.put("imageUrl", imageUrl);
                 itemMap.put("quantity", item.getQuantity());
                 itemMap.put("unitPrice", item.getUnitPrice());
+
+                // Add variant info from bulk map
+                if (item.getVariantId() != null) {
+                    itemMap.put("variantId", item.getVariantId());
+                    ProductVariant v = variantMap.get(item.getVariantId());
+                    if (v != null) {
+                        itemMap.put("variantName", v.getVariantName());
+                        itemMap.put("sku", v.getSku());
+                    }
+                } else {
+                    // Fallback to product SKU if no variant
+                    if (product != null) {
+                        itemMap.put("sku", product.getSku());
+                    }
+                }
+
                 return itemMap;
             }).collect(Collectors.toList());
 
@@ -191,6 +240,17 @@ public class OrderController {
             productRepository.findAllById(productIds).forEach(p -> productMap.put(p.getId(), p));
         }
 
+        java.util.Set<Long> variantIds = orders.stream()
+                .flatMap(order -> order.getOrderItems() != null ? order.getOrderItems().stream() : java.util.stream.Stream.empty())
+                .map(OrderItem::getVariantId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        java.util.Map<Long, ProductVariant> variantMap = new java.util.HashMap<>();
+        if (!variantIds.isEmpty()) {
+            productVariantRepository.findAllById(variantIds).forEach(v -> variantMap.put(v.getId(), v));
+        }
+
         List<Map<String, Object>> result = orders.stream().map(order -> {
             List<OrderItem> orderItemsList = order.getOrderItems() != null ? order.getOrderItems() : List.of();
             
@@ -205,6 +265,22 @@ public class OrderController {
                 itemMap.put("imageUrl", imageUrl);
                 itemMap.put("quantity", item.getQuantity());
                 itemMap.put("unitPrice", item.getUnitPrice());
+
+                // Add variant info from bulk map
+                if (item.getVariantId() != null) {
+                    itemMap.put("variantId", item.getVariantId());
+                    ProductVariant v = variantMap.get(item.getVariantId());
+                    if (v != null) {
+                        itemMap.put("variantName", v.getVariantName());
+                        itemMap.put("sku", v.getSku());
+                    }
+                } else {
+                    // Fallback to product SKU if no variant
+                    if (product != null) {
+                        itemMap.put("sku", product.getSku());
+                    }
+                }
+
                 return itemMap;
             }).collect(Collectors.toList());
 
@@ -260,10 +336,25 @@ public class OrderController {
                 
                 if (order.getOrderItems() != null) {
                     for (OrderItem item : order.getOrderItems()) {
-                        productRepository.findById(item.getProductId()).ifPresent(product -> {
-                            product.setStock((product.getStock() != null ? product.getStock() : 0) + item.getQuantity());
-                            productRepository.save(product);
-                        });
+                        // Revert variant stock if exists
+                        if (item.getVariantId() != null) {
+                            productVariantRepository.findById(item.getVariantId()).ifPresent(variant -> {
+                                variant.setStock(variant.getStock() + item.getQuantity());
+                                productVariantRepository.save(variant);
+                                
+                                // Sync total stock
+                                productRepository.findById(item.getProductId()).ifPresent(product -> {
+                                    product.setTotalStock((product.getTotalStock() != null ? product.getTotalStock() : 0) + item.getQuantity());
+                                    productRepository.save(product);
+                                });
+                            });
+                        } else {
+                            // Revert product stock only
+                            productRepository.findById(item.getProductId()).ifPresent(product -> {
+                                product.setTotalStock((product.getTotalStock() != null ? product.getTotalStock() : 0) + item.getQuantity());
+                                productRepository.save(product);
+                            });
+                        }
                     }
                 }
             }
@@ -306,10 +397,23 @@ public class OrderController {
         // Hoàn lại kho
         if (order.getOrderItems() != null) {
             for (OrderItem item : order.getOrderItems()) {
-                productRepository.findById(item.getProductId()).ifPresent(product -> {
-                    product.setStock((product.getStock() != null ? product.getStock() : 0) + item.getQuantity());
-                    productRepository.save(product);
-                });
+                if (item.getVariantId() != null) {
+                    productVariantRepository.findById(item.getVariantId()).ifPresent(variant -> {
+                        variant.setStock(variant.getStock() + item.getQuantity());
+                        productVariantRepository.save(variant);
+                        
+                        // Sync total stock
+                        productRepository.findById(item.getProductId()).ifPresent(product -> {
+                            product.setTotalStock((product.getTotalStock() != null ? product.getTotalStock() : 0) + item.getQuantity());
+                            productRepository.save(product);
+                        });
+                    });
+                } else {
+                    productRepository.findById(item.getProductId()).ifPresent(product -> {
+                        product.setTotalStock((product.getTotalStock() != null ? product.getTotalStock() : 0) + item.getQuantity());
+                        productRepository.save(product);
+                    });
+                }
             }
         }
 
@@ -333,6 +437,16 @@ public class OrderController {
         Order order = orderOpt.get();
         List<OrderItem> orderItemsList = order.getOrderItems() != null ? order.getOrderItems() : List.of();
 
+        java.util.Set<Long> variantIds = orderItemsList.stream()
+                .map(OrderItem::getVariantId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        java.util.Map<Long, ProductVariant> variantMap = new java.util.HashMap<>();
+        if (!variantIds.isEmpty()) {
+            productVariantRepository.findAllById(variantIds).forEach(v -> variantMap.put(v.getId(), v));
+        }
+
         List<Map<String, Object>> items = orderItemsList.stream().map(item -> {
             Product product = item.getProductId() != null ? productRepository.findById(item.getProductId()).orElse(null) : null;
             String productName = product != null && product.getName() != null ? product.getName() : "Sản phẩm không xác định";
@@ -343,6 +457,19 @@ public class OrderController {
             itemMap.put("imageUrl", imageUrl);
             itemMap.put("quantity", item.getQuantity());
             itemMap.put("unitPrice", item.getUnitPrice());
+            
+            if (item.getVariantId() != null) {
+                ProductVariant v = variantMap.get(item.getVariantId());
+                if (v != null) {
+                    itemMap.put("variantName", v.getVariantName());
+                    itemMap.put("sku", v.getSku());
+                }
+            } else {
+                if (product != null) {
+                    itemMap.put("sku", product.getSku());
+                }
+            }
+            
             return itemMap;
         }).collect(Collectors.toList());
 

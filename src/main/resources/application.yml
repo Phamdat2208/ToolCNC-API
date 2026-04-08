@@ -24,7 +24,11 @@ spring:
         format_sql: true
         dialect: org.hibernate.dialect.MySQLDialect
 
-  # Redis
+  # Caching - Sử dụng bộ nhớ đệm cục bộ thay vì Redis
+  cache:
+    type: simple
+
+  # Redis (Tắt hoặc giữ lại cấu hình nhưng không dùng)
   data:
     redis:
       host: localhost

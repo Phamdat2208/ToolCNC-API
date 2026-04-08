@@ -1,6 +1,7 @@
 package com.toolcnc.api.controller;
 
 import com.toolcnc.api.dto.ProductRequest;
+import com.toolcnc.api.dto.ProductSummaryDTO;
 import com.toolcnc.api.model.Category;
 import com.toolcnc.api.model.Product;
 import com.toolcnc.api.model.ProductImage;
@@ -35,8 +36,29 @@ public class AdminProductController {
     private BrandRepository brandRepository;
 
     @GetMapping
-    public ResponseEntity<List<Product>> getAllProducts() {
-        return ResponseEntity.ok(productRepository.findAll());
+    public ResponseEntity<List<ProductSummaryDTO>> getAllProducts() {
+        List<Product> products = productRepository.findAll();
+        List<ProductSummaryDTO> dtos = products.stream()
+                .map(this::convertToSummaryDTO)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(dtos);
+    }
+
+    private ProductSummaryDTO convertToSummaryDTO(Product p) {
+        return ProductSummaryDTO.builder()
+                .id(p.getId())
+                .name(p.getName())
+                .sku(p.getSku())
+                .price(p.getPrice())
+                .oldPrice(p.getOldPrice())
+                .minPrice(p.getMinPrice())
+                .maxPrice(p.getMaxPrice())
+                .hasVariants(p.getHasVariants())
+                .imageUrl(p.getImageUrl())
+                .totalStock(p.getTotalStock())
+                .categoryName(p.getCategory() != null ? p.getCategory().getName() : null)
+                .brandName(p.getBrand() != null ? p.getBrand().getName() : null)
+                .build();
     }
 
     @PostMapping
@@ -45,9 +67,52 @@ public class AdminProductController {
             return ResponseEntity.badRequest().body("Mã SKU đã tồn tại!");
         }
         Product product = mapToProduct(request);
-        
-        // Handle variants for new product
+        enrichProductFromRequest(product, request);
+
+        Product saved = productRepository.save(product);
+        return ResponseEntity.ok(saved);
+    }
+
+    @PostMapping("/bulk")
+    public ResponseEntity<?> createProducts(@RequestBody List<ProductRequest> requests) {
+        List<String> duplicateNames = requests.stream()
+                .map(ProductRequest::getName)
+                .filter(name -> productRepository.existsByNameIgnoreCase(name))
+                .collect(Collectors.toList());
+
+        if (!duplicateNames.isEmpty()) {
+            return ResponseEntity.badRequest().body("Các sản phẩm sau đã tồn tại tên: " + String.join(", ", duplicateNames));
+        }
+
+        List<Product> products = requests.stream().map(req -> {
+            Product product = mapToProduct(req);
+            enrichProductFromRequest(product, req);
+            return product;
+        }).collect(Collectors.toList());
+
+        return ResponseEntity.ok(productRepository.saveAll(products));
+    }
+
+    @PostMapping("/check-duplicates")
+    public ResponseEntity<List<String>> checkDuplicates(@RequestBody List<String> names) {
+        if (names == null || names.isEmpty()) {
+            return ResponseEntity.ok(java.util.Collections.emptyList());
+        }
+        List<String> lowerNames = names.stream()
+                .map(String::toLowerCase)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(productRepository.findExistingNames(lowerNames));
+    }
+
+    private void enrichProductFromRequest(Product product, ProductRequest request) {
+        // Handle variants
         if (Boolean.TRUE.equals(request.getHasVariants()) && request.getVariants() != null && !request.getVariants().isEmpty()) {
+            if (product.getVariants() == null) {
+                product.setVariants(new java.util.ArrayList<>());
+            } else {
+                product.getVariants().clear();
+            }
+            
             request.getVariants().forEach(vReq -> {
                 com.toolcnc.api.model.ProductVariant variant = com.toolcnc.api.model.ProductVariant.builder()
                         .sku(generateVariantSku(product.getSku(), vReq.getSku()))
@@ -62,27 +127,13 @@ public class AdminProductController {
         } else {
             product.setMinPrice(product.getPrice());
             product.setMaxPrice(product.getPrice());
+            if (product.getVariants() != null) {
+                product.getVariants().clear();
+            }
         }
 
-        Product saved = productRepository.save(product);
         // Save gallery images (max 8)
-        applyGallery(saved, request.getImageGallery());
-        return ResponseEntity.ok(productRepository.save(saved));
-    }
-
-    @PostMapping("/bulk")
-    public ResponseEntity<?> createProducts(@RequestBody List<ProductRequest> requests) {
-        List<String> duplicateNames = requests.stream()
-                .map(ProductRequest::getName)
-                .filter(name -> productRepository.existsByNameIgnoreCase(name))
-                .collect(Collectors.toList());
-
-        if (!duplicateNames.isEmpty()) {
-            return ResponseEntity.badRequest().body("Các sản phẩm sau đã tồn tại tên: " + String.join(", ", duplicateNames));
-        }
-
-        List<Product> products = requests.stream().map(this::mapToProduct).collect(Collectors.toList());
-        return ResponseEntity.ok(productRepository.saveAll(products));
+        applyGallery(product, request.getImageGallery());
     }
 
     @PutMapping("/{id}")
@@ -102,8 +153,8 @@ public class AdminProductController {
         existingProduct.setOldPrice(req.getOldPrice());
         existingProduct.setDescription(req.getDescription());
         
-        if (req.getStock() != null) {
-            existingProduct.setStock(req.getStock());
+        if (req.getTotalStock() != null) {
+            existingProduct.setTotalStock(req.getTotalStock());
         }
         
         // Optimize local storage by deleting old image when changed
@@ -230,7 +281,7 @@ public class AdminProductController {
                 .price(req.getPrice())
                 .oldPrice(req.getOldPrice())
                 .description(req.getDescription())
-                .stock(req.getStock() != null ? req.getStock() : 0)
+                .totalStock(req.getTotalStock() != null ? req.getTotalStock() : 0)
                 .imageUrl(req.getImageUrl())
                 .specifications(req.getSpecifications());
 

@@ -28,6 +28,8 @@ public class OrderItem {
 
     private Long productId;
 
+    private Long variantId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "order_id")
     @com.fasterxml.jackson.annotation.JsonIgnore

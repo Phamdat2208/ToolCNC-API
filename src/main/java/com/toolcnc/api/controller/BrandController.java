@@ -17,6 +17,7 @@ public class BrandController {
     private final BrandRepository brandRepository;
 
     @GetMapping
+    @org.springframework.cache.annotation.Cacheable(value = "brands")
     public ResponseEntity<List<Brand>> getAllBrands() {
         return ResponseEntity.ok(brandRepository.findAll());
     }

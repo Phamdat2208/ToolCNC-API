@@ -12,7 +12,7 @@ public class ProductRequest {
     private BigDecimal oldPrice;
     private Long brandId;
     private String description;
-    private Integer stock;
+    private Integer totalStock;
     private String imageUrl;
     private List<String> imageGallery; // max 8 images
     private String specifications;

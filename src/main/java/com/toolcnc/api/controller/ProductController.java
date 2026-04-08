@@ -1,5 +1,6 @@
 package com.toolcnc.api.controller;
 
+import com.toolcnc.api.dto.ProductSummaryDTO;
 import com.toolcnc.api.model.Product;
 import com.toolcnc.api.repository.ProductRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,7 +21,7 @@ public class ProductController {
     private ProductRepository productRepository;
 
     @GetMapping
-    public ResponseEntity<Page<Product>> getAllProducts(
+    public ResponseEntity<Page<ProductSummaryDTO>> getAllProducts(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "12") int size,
             @RequestParam(required = false) String keyword,
@@ -49,7 +50,10 @@ public class ProductController {
         Pageable paging = PageRequest.of(page, size, sortObj);
         Page<Product> pageTuts = productRepository.findWithFilters(keyword, category, minPrice, maxPrice, brandList, hasBrands, paging);
 
-        return ResponseEntity.ok(pageTuts);
+        // Map to Summary DTO
+        Page<ProductSummaryDTO> dtoPage = pageTuts.map(this::convertToSummaryDTO);
+
+        return ResponseEntity.ok(dtoPage);
     }
 
     @GetMapping("/{id}")
@@ -57,5 +61,22 @@ public class ProductController {
         return productRepository.findById(id)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    private ProductSummaryDTO convertToSummaryDTO(Product p) {
+        return ProductSummaryDTO.builder()
+                .id(p.getId())
+                .name(p.getName())
+                .sku(p.getSku())
+                .price(p.getPrice())
+                .oldPrice(p.getOldPrice())
+                .minPrice(p.getMinPrice())
+                .maxPrice(p.getMaxPrice())
+                .hasVariants(p.getHasVariants())
+                .imageUrl(p.getImageUrl())
+                .totalStock(p.getTotalStock())
+                .categoryName(p.getCategory() != null ? p.getCategory().getName() : null)
+                .brandName(p.getBrand() != null ? p.getBrand().getName() : null)
+                .build();
     }
 }

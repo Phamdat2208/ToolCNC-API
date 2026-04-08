@@ -47,7 +47,15 @@ public class Product {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    private Integer stock;
+    @Column(name = "total_stock")
+    private Integer totalStock;
+
+    public Integer getTotalStock() {
+        if (Boolean.TRUE.equals(hasVariants) && variants != null && !variants.isEmpty()) {
+            return variants.stream().mapToInt(v -> v.getStock() != null ? v.getStock() : 0).sum();
+        }
+        return totalStock;
+    }
 
     @Column(columnDefinition = "TEXT")
     private String imageUrl;
