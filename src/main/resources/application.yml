@@ -1,6 +1,10 @@
 server:
   port: 8080
 
+api:
+  masking:
+    enabled: true
+
 spring:
   application:
     name: tool-cnc-api
