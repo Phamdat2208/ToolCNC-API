@@ -2,6 +2,7 @@ package com.toolcnc.api.controller;
 
 import com.toolcnc.api.dto.ProductSummaryDTO;
 import com.toolcnc.api.model.Product;
+import com.toolcnc.api.repository.CategoryRepository;
 import com.toolcnc.api.repository.ProductRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -12,6 +13,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/public/products")
@@ -19,6 +23,9 @@ public class ProductController {
 
     @Autowired
     private ProductRepository productRepository;
+
+    @Autowired
+    private CategoryRepository categoryRepository;
 
     @GetMapping
     public ResponseEntity<Page<ProductSummaryDTO>> getAllProducts(
@@ -31,7 +38,7 @@ public class ProductController {
             @RequestParam(required = false) java.util.List<String> brand,
             @RequestParam(required = false) String sort) {
 
-        Sort sortObj = Sort.unsorted();
+        Sort sortObj;
         if ("price,asc".equals(sort)) {
             sortObj = Sort.by(Sort.Direction.ASC, "price");
         } else if ("price,desc".equals(sort)) {
@@ -40,7 +47,21 @@ public class ProductController {
             sortObj = Sort.by(Sort.Direction.DESC, "id");
         }
 
-        java.util.List<String> brandList = java.util.Collections.emptyList();
+        // Resolve category name → danh sách ID (cha + tất cả con cháu đệ quy)
+        List<Long> categoryIds = Collections.emptyList();
+        boolean hasCategories = false;
+        if (category != null && !category.isBlank()) {
+            var rootOpt = categoryRepository.findByNameIgnoreCase(category);
+            if (rootOpt.isPresent()) {
+                List<Long> ids = new ArrayList<>();
+                collectDescendantIds(rootOpt.get().getId(), ids);
+                categoryIds = ids;
+                hasCategories = true;
+            }
+        }
+
+        // Resolve brands
+        List<String> brandList = Collections.emptyList();
         boolean hasBrands = false;
         if (brand != null && !brand.isEmpty()) {
             brandList = brand.stream().map(String::toLowerCase).toList();
@@ -48,12 +69,23 @@ public class ProductController {
         }
 
         Pageable paging = PageRequest.of(page, size, sortObj);
-        Page<Product> pageTuts = productRepository.findWithFilters(keyword, category, minPrice, maxPrice, brandList, hasBrands, paging);
+        Page<Product> pageTuts = productRepository.findWithFilters(
+                keyword, categoryIds, hasCategories, minPrice, maxPrice, brandList, hasBrands, paging);
 
-        // Map to Summary DTO
         Page<ProductSummaryDTO> dtoPage = pageTuts.map(this::convertToSummaryDTO);
 
         return ResponseEntity.ok(dtoPage);
+    }
+
+    /**
+     * Đệ quy thu thập ID của category hiện tại và tất cả category con cháu.
+     */
+    private void collectDescendantIds(Long parentId, List<Long> result) {
+        result.add(parentId);
+        List<Long> childIds = categoryRepository.findChildIdsByParentId(parentId);
+        for (Long childId : childIds) {
+            collectDescendantIds(childId, result);
+        }
     }
 
     @GetMapping("/{id}")

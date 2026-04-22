@@ -26,13 +26,14 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"category", "brand"})
     @Query("SELECT p FROM Product p WHERE " +
            "(:keyword IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :keyword, '%'))) AND " +
-           "(:category IS NULL OR LOWER(p.category.name) LIKE LOWER(CONCAT('%', :category, '%'))) AND " +
+           "(:hasCategories = false OR p.category.id IN :categoryIds) AND " +
            "(:minPrice IS NULL OR p.price >= :minPrice) AND " +
            "(:maxPrice IS NULL OR p.price <= :maxPrice) AND " +
            "(:hasBrands = false OR LOWER(p.brand.name) IN :brands)")
     Page<Product> findWithFilters(
         @Param("keyword") String keyword,
-        @Param("category") String category,
+        @Param("categoryIds") java.util.List<Long> categoryIds,
+        @Param("hasCategories") boolean hasCategories,
         @Param("minPrice") BigDecimal minPrice,
         @Param("maxPrice") BigDecimal maxPrice,
         @Param("brands") java.util.List<String> brands,
