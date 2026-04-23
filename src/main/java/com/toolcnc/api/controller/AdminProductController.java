@@ -9,6 +9,7 @@ import com.toolcnc.api.repository.BrandRepository;
 import com.toolcnc.api.repository.CategoryRepository;
 import com.toolcnc.api.repository.ProductRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -62,6 +63,7 @@ public class AdminProductController {
     }
 
     @PostMapping
+    @CacheEvict(value = "categoryTree", allEntries = true)
     public ResponseEntity<?> createProduct(@RequestBody ProductRequest request) {
         if (request.getSku() != null && !request.getSku().isEmpty() && productRepository.existsBySku(request.getSku())) {
             return ResponseEntity.badRequest().body("Mã SKU đã tồn tại!");
@@ -74,6 +76,7 @@ public class AdminProductController {
     }
 
     @PostMapping("/bulk")
+    @CacheEvict(value = "categoryTree", allEntries = true)
     public ResponseEntity<?> createProducts(@RequestBody List<ProductRequest> requests) {
         List<String> duplicateNames = requests.stream()
                 .map(ProductRequest::getName)
@@ -137,6 +140,7 @@ public class AdminProductController {
     }
 
     @PutMapping("/{id}")
+    @CacheEvict(value = "categoryTree", allEntries = true)
     public ResponseEntity<?> updateProduct(@PathVariable Long id, @RequestBody ProductRequest req) {
         Optional<Product> optionalProduct = productRepository.findById(id);
         if (optionalProduct.isEmpty()) {
@@ -224,6 +228,7 @@ public class AdminProductController {
     }
 
     @DeleteMapping("/{id}")
+    @CacheEvict(value = "categoryTree", allEntries = true)
     public ResponseEntity<?> deleteProduct(@PathVariable Long id) {
         Optional<Product> optionalProduct = productRepository.findById(id);
         if (optionalProduct.isEmpty()) {

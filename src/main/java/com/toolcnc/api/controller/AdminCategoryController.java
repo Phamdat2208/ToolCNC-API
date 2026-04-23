@@ -4,6 +4,7 @@ import com.toolcnc.api.dto.CategoryRequest;
 import com.toolcnc.api.model.Category;
 import com.toolcnc.api.repository.CategoryRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -20,6 +21,7 @@ public class AdminCategoryController {
     private CategoryRepository categoryRepository;
 
     @PostMapping
+    @CacheEvict(value = "categoryTree", allEntries = true)
     public ResponseEntity<?> createCategory(@RequestBody CategoryRequest req) {
         Category category = Category.builder()
                 .name(req.getName())
@@ -34,6 +36,7 @@ public class AdminCategoryController {
     }
 
     @PutMapping("/{id}")
+    @CacheEvict(value = "categoryTree", allEntries = true)
     public ResponseEntity<?> updateCategory(@PathVariable Long id, @RequestBody CategoryRequest req) {
         return categoryRepository.findById(id).map(category -> {
             category.setName(req.getName());
@@ -53,6 +56,7 @@ public class AdminCategoryController {
     }
 
     @DeleteMapping("/{id}")
+    @CacheEvict(value = "categoryTree", allEntries = true)
     public ResponseEntity<?> deleteCategory(@PathVariable Long id) {
         return categoryRepository.findById(id).map(category -> {
             try {

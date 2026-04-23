@@ -4,6 +4,7 @@ import com.toolcnc.api.dto.BrandRequest;
 import com.toolcnc.api.model.Brand;
 import com.toolcnc.api.repository.BrandRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,6 +25,7 @@ public class AdminBrandController {
     }
 
     @PostMapping
+    @CacheEvict(value = "brands", allEntries = true)
     public ResponseEntity<?> createBrand(@Valid @RequestBody BrandRequest request) {
         if (brandRepository.findByName(request.getName()).isPresent()) {
             return ResponseEntity.badRequest().body("Tên thương hiệu đã tồn tại!");
@@ -37,6 +39,7 @@ public class AdminBrandController {
     }
 
     @PutMapping("/{id}")
+    @CacheEvict(value = "brands", allEntries = true)
     public ResponseEntity<?> updateBrand(@PathVariable Long id, @Valid @RequestBody BrandRequest request) {
         return brandRepository.findById(id).map(brand -> {
             brand.setName(request.getName());
@@ -47,6 +50,7 @@ public class AdminBrandController {
     }
 
     @DeleteMapping("/{id}")
+    @CacheEvict(value = "brands", allEntries = true)
     public ResponseEntity<?> deleteBrand(@PathVariable Long id) {
         if (brandRepository.existsById(id)) {
             brandRepository.deleteById(id);

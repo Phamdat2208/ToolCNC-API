@@ -29,7 +29,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
            "(:hasCategories = false OR p.category.id IN :categoryIds) AND " +
            "(:minPrice IS NULL OR p.price >= :minPrice) AND " +
            "(:maxPrice IS NULL OR p.price <= :maxPrice) AND " +
-           "(:hasBrands = false OR LOWER(p.brand.name) IN :brands)")
+           "(:hasBrands = false OR LOWER(p.brand.name) IN :brands) AND " +
+           "(:onlyInStock = false OR p.totalStock > 0)")
     Page<Product> findWithFilters(
         @Param("keyword") String keyword,
         @Param("categoryIds") java.util.List<Long> categoryIds,
@@ -38,6 +39,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
         @Param("maxPrice") BigDecimal maxPrice,
         @Param("brands") java.util.List<String> brands,
         @Param("hasBrands") boolean hasBrands,
+        @Param("onlyInStock") boolean onlyInStock,
         Pageable pageable
     );
 }

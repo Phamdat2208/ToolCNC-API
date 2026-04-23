@@ -36,7 +36,8 @@ public class ProductController {
             @RequestParam(required = false) BigDecimal minPrice,
             @RequestParam(required = false) BigDecimal maxPrice,
             @RequestParam(required = false) java.util.List<String> brand,
-            @RequestParam(required = false) String sort) {
+            @RequestParam(required = false) String sort,
+            @RequestParam(defaultValue = "false") boolean onlyInStock) {
 
         Sort sortObj;
         if ("price,asc".equals(sort)) {
@@ -68,9 +69,18 @@ public class ProductController {
             hasBrands = true;
         }
 
-        Pageable paging = PageRequest.of(page, size, sortObj);
+        Pageable paging;
+        if (size > 0) {
+            paging = PageRequest.of(page, size, sortObj);
+        } else {
+            // Nếu size <= 0, lấy toàn bộ sản phẩm (không phân trang)
+            // Lưu ý: Spring Data Pageable không hỗ trợ trực tiếp "lấy tất cả" trong PageRequest
+            // Chúng ta sử dụng Integer.MAX_VALUE để mô phỏng việc lấy tất cả
+            paging = PageRequest.of(0, Integer.MAX_VALUE, sortObj);
+        }
+
         Page<Product> pageTuts = productRepository.findWithFilters(
-                keyword, categoryIds, hasCategories, minPrice, maxPrice, brandList, hasBrands, paging);
+                keyword, categoryIds, hasCategories, minPrice, maxPrice, brandList, hasBrands, onlyInStock, paging);
 
         Page<ProductSummaryDTO> dtoPage = pageTuts.map(this::convertToSummaryDTO);
 
