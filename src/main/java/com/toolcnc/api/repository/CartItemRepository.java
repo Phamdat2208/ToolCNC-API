@@ -12,6 +12,7 @@ import java.util.Optional;
 
 @Repository
 public interface CartItemRepository extends JpaRepository<CartItem, Long> {
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"product", "variant"})
     List<CartItem> findByUserOrderByCreatedAtDesc(User user);
     Optional<CartItem> findByUserAndProduct(User user, Product product);
     Optional<CartItem> findByUserAndProductAndVariant(User user, Product product, ProductVariant variant);

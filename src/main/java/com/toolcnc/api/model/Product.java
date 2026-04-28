@@ -77,4 +77,8 @@ public class Product {
     @JoinColumn(name = "category_id", nullable = false)
     @com.fasterxml.jackson.annotation.JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private Category category;
+
+    @Column(name = "is_active", nullable = false)
+    @Builder.Default
+    private Boolean isActive = true;
 }

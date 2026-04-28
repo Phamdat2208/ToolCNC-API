@@ -132,7 +132,9 @@ public class OrderController {
     }
 
     @GetMapping("/my-orders")
-    public ResponseEntity<?> getMyOrders() {
+    public ResponseEntity<?> getMyOrders(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getName())) {
             return ResponseEntity.status(401).body(Map.of("message", "Unauthorized"));
@@ -143,80 +145,30 @@ public class OrderController {
             return ResponseEntity.status(404).body(Map.of("message", "User not found"));
         }
 
-        List<Order> orders = orderRepository.findByUserIdOrderByDateCreatedDesc(userOpt.get().getId());
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
 
-        java.util.Set<Long> productIds = orders.stream()
-                .flatMap(order -> order.getOrderItems() != null ? order.getOrderItems().stream() : java.util.stream.Stream.empty())
-                .map(OrderItem::getProductId)
-                .filter(java.util.Objects::nonNull)
-                .collect(Collectors.toSet());
-                
-        java.util.Map<Long, Product> productMap = new java.util.HashMap<>();
-        if (!productIds.isEmpty()) {
-            productRepository.findAllById(productIds).forEach(p -> productMap.put(p.getId(), p));
-        }
+        // Step 1: Lấy danh sách IDs phân trang — DB thực thi LIMIT/OFFSET đúng
+        org.springframework.data.domain.Page<Long> idsPage =
+            orderRepository.findIdsByUserIdOrderByDateCreatedDesc(userOpt.get().getId(), pageable);
 
-        java.util.Set<Long> variantIds = orders.stream()
-                .flatMap(order -> order.getOrderItems() != null ? order.getOrderItems().stream() : java.util.stream.Stream.empty())
-                .map(OrderItem::getVariantId)
-                .filter(java.util.Objects::nonNull)
-                .collect(Collectors.toSet());
+        // Step 2: Fetch đầy đủ data bằng JOIN FETCH — chỉ tải những đơn hàng cần thiết
+        List<Order> orders = idsPage.getContent().isEmpty()
+            ? List.of()
+            : orderRepository.findByIdInWithItems(idsPage.getContent());
 
-        java.util.Map<Long, ProductVariant> variantMap = new java.util.HashMap<>();
-        if (!variantIds.isEmpty()) {
-            productVariantRepository.findAllById(variantIds).forEach(v -> variantMap.put(v.getId(), v));
-        }
+        List<Map<String, Object>> content = mapOrdersToResponse(orders);
 
-        List<Map<String, Object>> result = orders.stream().map(order -> {
-            List<OrderItem> orderItemsList = order.getOrderItems() != null ? order.getOrderItems() : List.of();
-            
-            List<Map<String, Object>> items = orderItemsList.stream().map(item -> {
-                Product product = item.getProductId() != null ? productMap.get(item.getProductId()) : null;
-                String productName = product != null && product.getName() != null ? product.getName() : "Sản phẩm không xác định";
-                String imageUrl = product != null && product.getImageUrl() != null ? product.getImageUrl() : "";
-
-                Map<String, Object> itemMap = new java.util.HashMap<>();
-                itemMap.put("productId", item.getProductId());
-                itemMap.put("productName", productName);
-                itemMap.put("imageUrl", imageUrl);
-                itemMap.put("quantity", item.getQuantity());
-                itemMap.put("unitPrice", item.getUnitPrice());
-
-                // Add variant info from bulk map
-                if (item.getVariantId() != null) {
-                    itemMap.put("variantId", item.getVariantId());
-                    ProductVariant v = variantMap.get(item.getVariantId());
-                    if (v != null) {
-                        itemMap.put("variantName", v.getVariantName());
-                        itemMap.put("sku", v.getSku());
-                    }
-                } else {
-                    // Fallback to product SKU if no variant
-                    if (product != null) {
-                        itemMap.put("sku", product.getSku());
-                    }
-                }
-
-                return itemMap;
-            }).collect(Collectors.toList());
-
-            Map<String, Object> orderMap = new java.util.HashMap<>();
-            orderMap.put("id", order.getId());
-            orderMap.put("trackingNumber", order.getOrderTrackingNumber());
-            orderMap.put("totalPrice", order.getTotalPrice());
-            orderMap.put("totalQuantity", order.getTotalQuantity());
-            orderMap.put("status", order.getStatus());
-            orderMap.put("cancelReason", order.getCancelReason());
-            orderMap.put("dateCreated", order.getDateCreated());
-            orderMap.put("items", items);
-            return orderMap;
-        }).collect(Collectors.toList());
-
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(Map.of(
+            "content", content,
+            "totalElements", idsPage.getTotalElements(),
+            "totalPages", idsPage.getTotalPages()
+        ));
     }
 
     @GetMapping("/all")
-    public ResponseEntity<?> getAllOrders() {
+    public ResponseEntity<?> getAllOrders(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getName())) {
             return ResponseEntity.status(401).body(Map.of("message", "Unauthorized"));
@@ -227,17 +179,37 @@ public class OrderController {
             return ResponseEntity.status(403).body(Map.of("message", "Forbidden"));
         }
 
-        List<Order> orders = orderRepository.findAllByOrderByDateCreatedDesc();
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
 
+        // Step 1: Lấy danh sách IDs phân trang — DB thực thi LIMIT/OFFSET đúng
+        org.springframework.data.domain.Page<Long> idsPage =
+            orderRepository.findAllIdsByOrderByDateCreatedDesc(pageable);
+
+        // Step 2: Fetch đầy đủ data bằng JOIN FETCH — chỉ tải những đơn hàng cần thiết
+        List<Order> orders = idsPage.getContent().isEmpty()
+            ? List.of()
+            : orderRepository.findByIdInWithItems(idsPage.getContent());
+
+        List<Map<String, Object>> content = mapOrdersToResponse(orders);
+
+        return ResponseEntity.ok(Map.of(
+            "content", content,
+            "totalElements", idsPage.getTotalElements(),
+            "totalPages", idsPage.getTotalPages()
+        ));
+    }
+
+    private List<Map<String, Object>> mapOrdersToResponse(List<Order> orders) {
         java.util.Set<Long> productIds = orders.stream()
                 .flatMap(order -> order.getOrderItems() != null ? order.getOrderItems().stream() : java.util.stream.Stream.empty())
                 .map(OrderItem::getProductId)
                 .filter(java.util.Objects::nonNull)
                 .collect(Collectors.toSet());
                 
+        // Dùng findByIdInWithBrand để fetch product + brand trong 1 JOIN query — tránh N+1
         java.util.Map<Long, Product> productMap = new java.util.HashMap<>();
         if (!productIds.isEmpty()) {
-            productRepository.findAllById(productIds).forEach(p -> productMap.put(p.getId(), p));
+            productRepository.findByIdInWithBrand(productIds).forEach(p -> productMap.put(p.getId(), p));
         }
 
         java.util.Set<Long> variantIds = orders.stream()
@@ -251,7 +223,7 @@ public class OrderController {
             productVariantRepository.findAllById(variantIds).forEach(v -> variantMap.put(v.getId(), v));
         }
 
-        List<Map<String, Object>> result = orders.stream().map(order -> {
+        return orders.stream().map(order -> {
             List<OrderItem> orderItemsList = order.getOrderItems() != null ? order.getOrderItems() : List.of();
             
             List<Map<String, Object>> items = orderItemsList.stream().map(item -> {
@@ -266,7 +238,6 @@ public class OrderController {
                 itemMap.put("quantity", item.getQuantity());
                 itemMap.put("unitPrice", item.getUnitPrice());
 
-                // Add variant info from bulk map
                 if (item.getVariantId() != null) {
                     itemMap.put("variantId", item.getVariantId());
                     ProductVariant v = variantMap.get(item.getVariantId());
@@ -275,7 +246,6 @@ public class OrderController {
                         itemMap.put("sku", v.getSku());
                     }
                 } else {
-                    // Fallback to product SKU if no variant
                     if (product != null) {
                         itemMap.put("sku", product.getSku());
                     }
@@ -301,8 +271,6 @@ public class OrderController {
             orderMap.put("items", items);
             return orderMap;
         }).collect(Collectors.toList());
-
-        return ResponseEntity.ok(result);
     }
 
     @PutMapping("/{id}/status")

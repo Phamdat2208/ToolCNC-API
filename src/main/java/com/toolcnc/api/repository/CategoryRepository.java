@@ -15,7 +15,7 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     @Query("SELECT new com.toolcnc.api.dto.CategoryResponse(c.id, c.name, cp.id, COUNT(p)) " +
            "FROM Category c " +
            "LEFT JOIN c.parent cp " +
-           "LEFT JOIN Product p ON p.category = c " +
+           "LEFT JOIN Product p ON p.category = c AND p.isActive = true " +
            "GROUP BY c.id, c.name, cp.id")
     List<CategoryResponse> findAllWithProductCount();
 

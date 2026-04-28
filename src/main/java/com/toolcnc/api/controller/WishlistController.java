@@ -1,33 +1,24 @@
 package com.toolcnc.api.controller;
 
-import com.toolcnc.api.model.Product;
+import com.toolcnc.api.dto.WishlistItemResponseDTO;
 import com.toolcnc.api.model.User;
-import com.toolcnc.api.model.WishlistItem;
-import com.toolcnc.api.repository.ProductRepository;
 import com.toolcnc.api.repository.UserRepository;
-import com.toolcnc.api.repository.WishlistItemRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.toolcnc.api.service.WishlistService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/v1/wishlist")
+@RequiredArgsConstructor
 public class WishlistController {
 
-    @Autowired
-    private WishlistItemRepository wishlistRepository;
-
-    @Autowired
-    private ProductRepository productRepository;
-
-    @Autowired
-    private UserRepository userRepository;
+    private final WishlistService wishlistService;
+    private final UserRepository userRepository;
 
     private User getAuthenticatedUser(Authentication auth) {
         if (auth == null || !auth.isAuthenticated()) return null;
@@ -36,11 +27,11 @@ public class WishlistController {
     }
 
     @GetMapping
-    public ResponseEntity<?> getMyWishlist(Authentication auth) {
+    public ResponseEntity<List<WishlistItemResponseDTO>> getMyWishlist(Authentication auth) {
         User user = getAuthenticatedUser(auth);
         if (user == null) return ResponseEntity.status(401).build();
 
-        List<WishlistItem> items = wishlistRepository.findByUserOrderByCreatedAtDesc(user);
+        List<WishlistItemResponseDTO> items = wishlistService.getMyWishlist(user);
         return ResponseEntity.ok(items);
     }
 
@@ -49,24 +40,15 @@ public class WishlistController {
         User user = getAuthenticatedUser(auth);
         if (user == null) return ResponseEntity.status(401).build();
 
-        Optional<Product> optionalProduct = productRepository.findById(productId);
-        if (optionalProduct.isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("message", "Product does not exist"));
-        }
-        Product product = optionalProduct.get();
-
-        Optional<WishlistItem> existing = wishlistRepository.findByUserAndProduct(user, product);
-        
-        if (existing.isPresent()) {
-            wishlistRepository.delete(existing.get());
-            return ResponseEntity.ok(Map.of("added", false, "message", "Removed from wishlist"));
-        } else {
-            WishlistItem newItem = WishlistItem.builder()
-                    .user(user)
-                    .product(product)
-                    .build();
-            wishlistRepository.save(newItem);
-            return ResponseEntity.ok(Map.of("added", true, "message", "Added to wishlist"));
+        try {
+            WishlistItemResponseDTO result = wishlistService.toggleWishlist(productId, user);
+            if (result == null) {
+                return ResponseEntity.ok(Map.of("added", false, "message", "Removed from wishlist"));
+            } else {
+                return ResponseEntity.ok(Map.of("added", true, "message", "Added to wishlist"));
+            }
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }
     }
 
@@ -75,22 +57,16 @@ public class WishlistController {
         User user = getAuthenticatedUser(auth);
         if (user == null) return ResponseEntity.status(401).build();
 
-        Optional<Product> optionalProduct = productRepository.findById(productId);
-        if (optionalProduct.isPresent()) {
-            wishlistRepository.findByUserAndProduct(user, optionalProduct.get())
-                    .ifPresent(wishlistRepository::delete);
-        }
-        
+        wishlistService.removeFromWishlist(productId, user);
         return ResponseEntity.ok(Map.of("message", "Removed from wishlist"));
     }
 
     @DeleteMapping("/clear")
-    @Transactional
     public ResponseEntity<?> clearWishlist(Authentication auth) {
         User user = getAuthenticatedUser(auth);
         if (user == null) return ResponseEntity.status(401).build();
 
-        wishlistRepository.deleteByUser(user);
+        wishlistService.clearWishlist(user);
         return ResponseEntity.ok(Map.of("message", "Wishlist cleared"));
     }
 }

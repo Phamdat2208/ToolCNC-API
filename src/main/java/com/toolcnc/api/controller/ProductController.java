@@ -80,7 +80,7 @@ public class ProductController {
         }
 
         Page<Product> pageTuts = productRepository.findWithFilters(
-                keyword, categoryIds, hasCategories, minPrice, maxPrice, brandList, hasBrands, onlyInStock, paging);
+                keyword, categoryIds, hasCategories, minPrice, maxPrice, brandList, hasBrands, onlyInStock, true, paging);
 
         Page<ProductSummaryDTO> dtoPage = pageTuts.map(this::convertToSummaryDTO);
 
@@ -119,6 +119,7 @@ public class ProductController {
                 .totalStock(p.getTotalStock())
                 .categoryName(p.getCategory() != null ? p.getCategory().getName() : null)
                 .brandName(p.getBrand() != null ? p.getBrand().getName() : null)
+                .isActive(p.getIsActive())
                 .build();
     }
 }

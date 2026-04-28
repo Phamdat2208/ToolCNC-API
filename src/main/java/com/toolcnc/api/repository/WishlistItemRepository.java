@@ -11,6 +11,7 @@ import java.util.Optional;
 
 @Repository
 public interface WishlistItemRepository extends JpaRepository<WishlistItem, Long> {
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"product"})
     List<WishlistItem> findByUserOrderByCreatedAtDesc(User user);
     Optional<WishlistItem> findByUserAndProduct(User user, Product product);
     void deleteByUser(User user);

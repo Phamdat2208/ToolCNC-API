@@ -37,12 +37,18 @@ public class AdminProductController {
     private BrandRepository brandRepository;
 
     @GetMapping
-    public ResponseEntity<List<ProductSummaryDTO>> getAllProducts() {
-        List<Product> products = productRepository.findAll();
-        List<ProductSummaryDTO> dtos = products.stream()
-                .map(this::convertToSummaryDTO)
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(dtos);
+    public ResponseEntity<org.springframework.data.domain.Page<ProductSummaryDTO>> getAllProducts(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Boolean isActive) {
+        
+        org.springframework.data.domain.Pageable paging = org.springframework.data.domain.PageRequest.of(page, size, org.springframework.data.domain.Sort.by("id").descending());
+        
+        org.springframework.data.domain.Page<Product> productPage = productRepository.findWithFilters(
+                keyword, null, false, null, null, null, false, false, isActive, paging);
+        
+        return ResponseEntity.ok(productPage.map(this::convertToSummaryDTO));
     }
 
     private ProductSummaryDTO convertToSummaryDTO(Product p) {
@@ -59,6 +65,7 @@ public class AdminProductController {
                 .totalStock(p.getTotalStock())
                 .categoryName(p.getCategory() != null ? p.getCategory().getName() : null)
                 .brandName(p.getBrand() != null ? p.getBrand().getName() : null)
+                .isActive(p.getIsActive())
                 .build();
     }
 
@@ -236,8 +243,23 @@ public class AdminProductController {
         }
 
         Product product = optionalProduct.get();
-        deleteOldImage(product.getImageUrl());
-        productRepository.delete(product);
+        // deleteOldImage(product.getImageUrl()); // Keep image for historical wishlist/order display
+        product.setIsActive(false);
+        productRepository.save(product);
+        return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/{id}/restore")
+    @CacheEvict(value = "categoryTree", allEntries = true)
+    public ResponseEntity<?> restoreProduct(@PathVariable Long id) {
+        Optional<Product> optionalProduct = productRepository.findById(id);
+        if (optionalProduct.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Product product = optionalProduct.get();
+        product.setIsActive(true);
+        productRepository.save(product);
         return ResponseEntity.ok().build();
     }
 
