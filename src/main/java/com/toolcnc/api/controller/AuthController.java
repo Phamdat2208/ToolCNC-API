@@ -9,6 +9,8 @@ import com.toolcnc.api.model.User;
 import com.toolcnc.api.repository.UserRepository;
 import com.toolcnc.api.security.CustomUserDetailsService;
 import com.toolcnc.api.security.JwtUtil;
+import com.toolcnc.api.security.TokenCacheService;
+import com.toolcnc.api.security.SseService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +18,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -36,6 +39,12 @@ public class AuthController {
 
     @Autowired
     private CustomUserDetailsService userDetailsService;
+
+    @Autowired
+    private TokenCacheService tokenCacheService;
+
+    @Autowired
+    private SseService sseService;
 
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@Valid @RequestBody RegisterRequest registerRequest) {
@@ -73,13 +82,35 @@ public class AuthController {
         final org.springframework.security.core.userdetails.UserDetails userDetails = 
             userDetailsService.loadUserByUsername(user.getUsername());
             
+        if (!loginRequest.isForceLogin() && tokenCacheService.hasActiveSession(user.getUsername())) {
+            return ResponseEntity.status(409).body(Map.of(
+                    "error_code", "CONCURRENT_LOGIN_DETECTED",
+                    "message", "Tài khoản này đang được đăng nhập ở một nơi khác, bạn có muốn tiếp tục?"
+            ));
+        }
+
+        // If force login, send logout event to previous session
+        if (loginRequest.isForceLogin() && tokenCacheService.hasActiveSession(user.getUsername())) {
+            sseService.sendLogoutEvent(user.getUsername());
+        }
+
         final String jwt = jwtUtil.generateToken(userDetails);
+        tokenCacheService.saveActiveToken(user.getUsername(), jwt, jwtUtil.getJwtExpirationMs());
 
         return ResponseEntity.ok(JwtResponse.builder()
                 .token(jwt)
                 .username(user.getUsername())
                 .role(user.getRole().name())
                 .build());
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<?> logoutUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
+            tokenCacheService.invalidateToken(auth.getName());
+        }
+        return ResponseEntity.ok(Map.of("message", "Logged out successfully!"));
     }
 
     @GetMapping("/me")
@@ -127,5 +158,14 @@ public class AuthController {
             "fullName", user.getFullName(),
             "phone", user.getPhone()
         ));
+    }
+
+    @GetMapping("/stream")
+    public SseEmitter streamEvents() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getName())) {
+            throw new RuntimeException("Unauthorized");
+        }
+        return sseService.createEmitter(auth.getName());
     }
 }

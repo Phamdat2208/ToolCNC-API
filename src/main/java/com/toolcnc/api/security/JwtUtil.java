@@ -23,6 +23,10 @@ public class JwtUtil {
     @Value("${jwt.expiration}")
     private int jwtExpirationMs;
 
+    public int getJwtExpirationMs() {
+        return jwtExpirationMs;
+    }
+
     private Key getSigningKey() {
         return Keys.hmacShaKeyFor(jwtSecret.getBytes());
     }
