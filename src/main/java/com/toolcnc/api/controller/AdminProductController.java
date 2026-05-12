@@ -8,6 +8,7 @@ import com.toolcnc.api.model.ProductImage;
 import com.toolcnc.api.repository.BrandRepository;
 import com.toolcnc.api.repository.CategoryRepository;
 import com.toolcnc.api.repository.ProductRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.http.ResponseEntity;
@@ -35,6 +36,8 @@ public class AdminProductController {
 
     @Autowired
     private BrandRepository brandRepository;
+
+    private final ObjectMapper mapper = new ObjectMapper();
 
     @GetMapping
     public ResponseEntity<org.springframework.data.domain.Page<ProductSummaryDTO>> getAllProducts(
@@ -144,6 +147,9 @@ public class AdminProductController {
 
         // Save gallery images (max 8)
         applyGallery(product, request.getImageGallery());
+
+        // Handle description images
+        product.setDescriptionImages(convertImagesToJson(request.getDescriptionImages()));
     }
 
     @PutMapping("/{id}")
@@ -178,6 +184,7 @@ public class AdminProductController {
         }
 
         existingProduct.setSpecifications(req.getSpecifications());
+        existingProduct.setDescriptionImages(convertImagesToJson(req.getDescriptionImages()));
 
         if (req.getCategoryId() != null) {
             categoryRepository.findById(req.getCategoryId()).ifPresent(existingProduct::setCategory);
@@ -263,6 +270,18 @@ public class AdminProductController {
         return ResponseEntity.ok().build();
     }
 
+    private String convertImagesToJson(List<String> images) {
+        if (images == null || images.isEmpty()) {
+            return "[]";
+        }
+        try {
+            return mapper.writeValueAsString(images);
+        } catch (Exception e) {
+            System.err.println("Error converting images to JSON: " + e.getMessage());
+            return "[]";
+        }
+    }
+
     private void deleteOldImage(String imageUrl) {
         if (imageUrl != null && imageUrl.contains("/uploads/products/")) {
             try {
@@ -310,7 +329,8 @@ public class AdminProductController {
                 .description(req.getDescription())
                 .totalStock(req.getTotalStock() != null ? req.getTotalStock() : 0)
                 .imageUrl(req.getImageUrl())
-                .specifications(req.getSpecifications());
+                .specifications(req.getSpecifications())
+                .descriptionImages(convertImagesToJson(req.getDescriptionImages()));
 
         if (req.getCategoryId() != null) {
             categoryRepository.findById(req.getCategoryId()).ifPresent(builder::category);

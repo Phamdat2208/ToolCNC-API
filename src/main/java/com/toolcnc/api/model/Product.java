@@ -73,6 +73,9 @@ public class Product {
     @Column(columnDefinition = "TEXT")
     private String specifications;
 
+    @Column(name = "description_images", columnDefinition = "TEXT")
+    private String descriptionImages;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id", nullable = false)
     @com.fasterxml.jackson.annotation.JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
