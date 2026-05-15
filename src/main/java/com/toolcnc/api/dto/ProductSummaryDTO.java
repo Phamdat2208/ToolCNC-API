@@ -24,5 +24,6 @@ public class ProductSummaryDTO {
     private Integer totalStock;
     private String categoryName;
     private String brandName;
+    private String specifications;
     private Boolean isActive;
 }

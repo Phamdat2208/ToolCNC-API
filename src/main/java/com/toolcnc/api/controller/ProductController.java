@@ -119,6 +119,7 @@ public class ProductController {
                 .totalStock(p.getTotalStock())
                 .categoryName(p.getCategory() != null ? p.getCategory().getName() : null)
                 .brandName(p.getBrand() != null ? p.getBrand().getName() : null)
+                .specifications(p.getSpecifications())
                 .isActive(p.getIsActive())
                 .build();
     }
